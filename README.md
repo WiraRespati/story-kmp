@@ -42,8 +42,13 @@ Aplikasi **Story Sharing** modern berbasis **Kotlin Multiplatform (KMP)** dan **
 * **Tombol Bookmark:** Menyimpan atau menghapus cerita favorit langsung dari halaman detail.
 
 ### 4. 📸 Unggah Cerita (Add Story) & Media Picker
-* **Cross-Platform Image Picker:** Pengambilan gambar langsung dari Kamera atau Galeri perangkat untuk Android dan iOS.
-* **Validasi Media:** Pengecekan otomatis batas ukuran file foto (< 1MB) dan kelengkapan deskripsi.
+* **Cross-Platform Media Picker:** Pengambilan gambar langsung dari Kamera atau Galeri perangkat untuk Android dan iOS.
+* **Kompresi Gambar Otomatis (< 1 MB Terjamin):**
+  * Seluruh foto baik dari kamera maupun galeri otomatis dikompresi sebelum diunggah dengan batas target aman **< 950 KB** (< 1 MB).
+  * **Algoritma Bertingkat (*Iterative Compression*):** Melakukan reduksi kualitas JPEG bertahap serta *adaptive resolution downscaling* jika file gambar masih berukuran besar.
+  * **Rotasi Otomatis (EXIF Orientation):** Membaca metadata EXIF kamera secara otomatis agar foto selalu tegak (*upright*) dan tidak miring/terbalik.
+  * **Subsampling Aman Memori (`inSampleSize`):** Mencegah *OutOfMemory (OOM)* pada pemrosesan foto kamera beresolusi tinggi (48MP/108MP).
+* **Indikator Visual Ukuran:** Menampilkan informasi ukuran file riil setelah dikompresi langsung pada pratinjau foto (`Ukuran: X KB (Telah terkompresi < 1 MB)`).
 * **Pemilihan Lokasi Interaktif:**
   * Pencarian alamat tempat berbasis OpenStreetMap (OSM Geocoding).
   * Opsi memilih lokasi langsung dari peta atau menyertakan koordinat saat ini.
@@ -82,6 +87,7 @@ Aplikasi **Story Sharing** modern berbasis **Kotlin Multiplatform (KMP)** dan **
 | **Serialization** | **Kotlinx Serialization JSON 1.8.0** | Parser JSON type-safe performa tinggi |
 | **Dependency Injection** | **Koin Multiplatform 4.2.2** | Service Locator / DI untuk KMP (`koin-core`, `koin-compose-viewmodel`) |
 | **Image Loading** | **Coil 3.5.0** | Pustaka pemuat gambar asinkron & caching multiplatform (`coil-compose`, `coil-network-ktor3`) |
+| **Image Compression** | **Native Bitmap & CoreGraphics** | Kompresi bertingkat (< 1 MB), Auto-orientasi EXIF & Downscaling adaptif |
 | **Concurrency** | **Kotlinx Coroutines 1.11.0** | `StateFlow`, `SharedFlow`, Coroutine Scope |
 | **Architecture** | **MVVM + Clean Architecture** | Unidirectional Data Flow (UDF) & Repository Pattern |
 | **Maps Engine** | **Leaflet JS + OpenStreetMap** | Peta interaktif berbasis WebView cross-platform |
