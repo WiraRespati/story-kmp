@@ -1,0 +1,6 @@
+## Example local.properties
+# Copy this file to local.properties and set your configuration.
+# Note: local.properties is ignored by git and contains sensitive/local configurations.
+
+sdk.dir=/Users/your-username/Library/Android/sdk
+STORY_API_BASE_URL=https://story-api.dicoding.dev/v1/

@@ -110,7 +110,7 @@ class SharedCommonTest {
         assertEquals(com.learn.story.ui.theme.AppThemeMode.SYSTEM, com.learn.story.ui.theme.AppThemeMode.fromCode("system"))
         assertEquals(com.learn.story.ui.theme.AppThemeMode.SYSTEM, com.learn.story.ui.theme.AppThemeMode.fromCode("invalid_code"))
 
-        val settings = com.russhwolf.settings.Settings()
+        val settings = com.russhwolf.settings.MapSettings()
         val themeRepo = com.learn.story.data.repository.ThemeRepository(settings)
 
         themeRepo.setThemeMode(com.learn.story.ui.theme.AppThemeMode.DARK)

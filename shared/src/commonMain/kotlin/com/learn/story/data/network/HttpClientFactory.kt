@@ -1,5 +1,6 @@
 package com.learn.story.data.network
 
+import com.learn.story.BuildKonfig
 import com.learn.story.data.storage.TokenStorage
 import io.ktor.client.HttpClient
 import io.ktor.client.engine.HttpClientEngine
@@ -19,7 +20,7 @@ import kotlinx.serialization.json.Json
 fun createHttpClient(engine: HttpClientEngine, tokenStorage: TokenStorage): HttpClient {
     return HttpClient(engine) {
         defaultRequest {
-            url("https://story-api.dicoding.dev/v1/")
+            url(BuildKonfig.BASE_URL)
         }
 
         install(ContentNegotiation) {

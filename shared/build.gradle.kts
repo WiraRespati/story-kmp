@@ -1,5 +1,7 @@
+import com.codingfeline.buildkonfig.compiler.FieldSpec.Type.STRING
 import org.jetbrains.kotlin.gradle.ExperimentalWasmDsl
 import org.jetbrains.kotlin.gradle.dsl.JvmTarget
+import java.util.Properties
 
 plugins {
     alias(libs.plugins.kotlinMultiplatform)
@@ -9,6 +11,7 @@ plugins {
     alias(libs.plugins.kotlinSerialization)
     alias(libs.plugins.ksp)
     alias(libs.plugins.androidxRoom)
+    alias(libs.plugins.buildkonfig)
 }
 
 kotlin {
@@ -88,6 +91,7 @@ kotlin {
         }
         commonTest.dependencies {
             implementation(libs.kotlin.test)
+            implementation(libs.multiplatform.settings.test)
         }
         // jsMain.dependencies {
         //     implementation(libs.wrappers.browser)
@@ -117,3 +121,20 @@ dependencies {
     add("kspIosSimulatorArm64", libs.androidx.room.compiler)
 }
 
+val localProps = Properties().apply {
+    val localPropertiesFile = rootProject.file("local.properties")
+    if (localPropertiesFile.exists()) {
+        localPropertiesFile.inputStream().use { load(it) }
+    }
+}
+
+val storyApiBaseUrl: String = localProps.getProperty("STORY_API_BASE_URL")
+    ?: (project.findProperty("STORY_API_BASE_URL") as? String)
+    ?: ""
+
+buildkonfig {
+    packageName = "com.learn.story"
+    defaultConfigs {
+        buildConfigField(STRING, "BASE_URL", storyApiBaseUrl)
+    }
+}
