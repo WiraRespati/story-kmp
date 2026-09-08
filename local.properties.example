@@ -3,4 +3,4 @@
 # Note: local.properties is ignored by git and contains sensitive/local configurations.
 
 sdk.dir=/Users/your-username/Library/Android/sdk
-STORY_API_BASE_URL=https://story-api.dicoding.dev/v1/
+STORY_API_BASE_URL=https:apasi
