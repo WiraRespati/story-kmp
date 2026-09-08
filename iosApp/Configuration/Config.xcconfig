@@ -1,0 +1,11 @@
+TEAM_ID=
+
+PRODUCT_NAME=Story
+PRODUCT_BUNDLE_IDENTIFIER=com.learn.story.Story$(TEAM_ID)
+
+CURRENT_PROJECT_VERSION=1
+MARKETING_VERSION=1.0
+
+// Allow running on iOS Simulator without a paid Apple Developer Account
+CODE_SIGNING_ALLOWED[sdk=iphonesimulator*]=NO
+CODE_SIGN_IDENTITY[sdk=iphonesimulator*]=
