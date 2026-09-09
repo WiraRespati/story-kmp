@@ -20,7 +20,9 @@ data class StoryMapUiState(
     val markers: List<MapMarker> = emptyList(),
     val selectedStory: Story? = null,
     val selectedStoryAddress: String? = null
-)
+) {
+    val isEmpty: Boolean get() = !isLoading && storiesWithLocation.isEmpty() && errorMessage == null
+}
 
 class StoryMapViewModel(
     private val storyRepository: StoryRepository,

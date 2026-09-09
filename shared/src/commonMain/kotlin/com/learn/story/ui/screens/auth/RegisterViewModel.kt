@@ -11,6 +11,13 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 
+sealed interface RegisterSubmitState {
+    data object Idle : RegisterSubmitState
+    data object Loading : RegisterSubmitState
+    data class Success(val message: String) : RegisterSubmitState
+    data class Error(val message: String) : RegisterSubmitState
+}
+
 data class RegisterUiState(
     val name: String = "",
     val email: String = "",
@@ -18,11 +25,13 @@ data class RegisterUiState(
     val nameError: String? = null,
     val emailError: String? = null,
     val passwordError: String? = null,
-    val isLoading: Boolean = false,
-    val errorMessage: String? = null,
-    val successMessage: String? = null,
-    val isSuccess: Boolean = false
-)
+    val submitState: RegisterSubmitState = RegisterSubmitState.Idle
+) {
+    val isLoading: Boolean get() = submitState is RegisterSubmitState.Loading
+    val isSuccess: Boolean get() = submitState is RegisterSubmitState.Success
+    val errorMessage: String? get() = (submitState as? RegisterSubmitState.Error)?.message
+    val successMessage: String? get() = (submitState as? RegisterSubmitState.Success)?.message
+}
 
 class RegisterViewModel(
     private val authRepository: AuthRepository
@@ -36,7 +45,7 @@ class RegisterViewModel(
             it.copy(
                 name = name,
                 nameError = null,
-                errorMessage = null
+                submitState = if (it.submitState is RegisterSubmitState.Error) RegisterSubmitState.Idle else it.submitState
             )
         }
     }
@@ -46,7 +55,7 @@ class RegisterViewModel(
             it.copy(
                 email = email,
                 emailError = null,
-                errorMessage = null
+                submitState = if (it.submitState is RegisterSubmitState.Error) RegisterSubmitState.Idle else it.submitState
             )
         }
     }
@@ -56,7 +65,7 @@ class RegisterViewModel(
             it.copy(
                 password = password,
                 passwordError = null,
-                errorMessage = null
+                submitState = if (it.submitState is RegisterSubmitState.Error) RegisterSubmitState.Idle else it.submitState
             )
         }
     }
@@ -86,34 +95,30 @@ class RegisterViewModel(
         val password = _uiState.value.password
 
         viewModelScope.launch {
-            _uiState.update { it.copy(isLoading = true, errorMessage = null) }
+            _uiState.update { it.copy(submitState = RegisterSubmitState.Loading) }
             when (val result = authRepository.register(name, email, password)) {
                 is ApiResult.Success -> {
                     _uiState.update {
-                        it.copy(
-                            isLoading = false,
-                            successMessage = result.data,
-                            isSuccess = true
-                        )
+                        it.copy(submitState = RegisterSubmitState.Success(result.data))
                     }
                 }
                 is ApiResult.Error -> {
                     _uiState.update {
-                        it.copy(isLoading = false, errorMessage = result.message)
+                        it.copy(submitState = RegisterSubmitState.Error(result.message))
                     }
                 }
                 is ApiResult.Loading -> {
-                    _uiState.update { it.copy(isLoading = true) }
+                    _uiState.update { it.copy(submitState = RegisterSubmitState.Loading) }
                 }
             }
         }
     }
 
     fun resetSuccess() {
-        _uiState.update { it.copy(isSuccess = false) }
+        _uiState.update { it.copy(submitState = RegisterSubmitState.Idle) }
     }
 
     fun clearMessages() {
-        _uiState.update { it.copy(errorMessage = null, successMessage = null) }
+        _uiState.update { it.copy(submitState = RegisterSubmitState.Idle) }
     }
 }

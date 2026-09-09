@@ -41,11 +41,11 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -65,7 +65,7 @@ fun SelectLocationScreen(
     onNavigateBack: () -> Unit,
     modifier: Modifier = Modifier
 ) {
-    val uiState by viewModel.uiState.collectAsState()
+    val uiState by viewModel.uiState.collectAsStateWithLifecycle()
     var searchQuery by remember { mutableStateOf("") }
 
     Scaffold(
@@ -204,7 +204,7 @@ fun SelectLocationScreen(
                             .heightIn(max = 240.dp)
                     ) {
                         LazyColumn(modifier = Modifier.fillMaxWidth()) {
-                            items(uiState.locationSearchResults) { place ->
+                            items(uiState.locationSearchResults, key = { "${it.lat}_${it.lon}_${it.displayName}" }) { place ->
                                 Row(
                                     modifier = Modifier
                                         .fillMaxWidth()

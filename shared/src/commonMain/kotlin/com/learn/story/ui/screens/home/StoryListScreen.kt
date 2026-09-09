@@ -303,7 +303,7 @@ fun StoryListScreenContent(
 
             // Sleek indeterminate linear indicator when refreshing in background
             AnimatedVisibility(
-                visible = uiState.isLoading && uiState.stories.isNotEmpty(),
+                visible = uiState.isRefreshing,
                 enter = fadeIn() + expandVertically(),
                 exit = fadeOut() + shrinkVertically()
             ) {
@@ -319,7 +319,7 @@ fun StoryListScreenContent(
             // Story List Content (100% focused on feed)
             Box(modifier = Modifier.fillMaxSize()) {
                 when {
-                    uiState.isLoading && uiState.stories.isEmpty() -> {
+                    uiState.isInitialLoading -> {
                         // Shimmer Skeleton Loading Effect
                         StoryListSkeleton(count = 3)
                     }
@@ -333,17 +333,8 @@ fun StoryListScreenContent(
                     }
 
                     uiState.filteredStories.isEmpty() -> {
-                        val emptyMsg = if (uiState.searchQuery.isNotBlank()) {
-                            "Tidak ada story yang cocok dengan pencarian '${uiState.searchQuery}'"
-                        } else if (uiState.showOnlyBookmarks) {
-                            "Belum ada story yang ditandai favorit"
-                        } else if (uiState.showOnlyWithLocation) {
-                            "Belum ada story yang memiliki data lokasi"
-                        } else {
-                            "Belum ada postingan story saat ini"
-                        }
                         EmptyStateView(
-                            message = emptyMsg,
+                            message = uiState.emptyMessage,
                             onRefresh = onRefresh,
                             modifier = Modifier.align(Alignment.Center)
                         )

@@ -29,7 +29,18 @@ data class HomeUiState(
     val errorMessage: String? = null,
     val userName: String? = null,
     val isLoggedOut: Boolean = false
-)
+) {
+    val isInitialLoading: Boolean get() = isLoading && stories.isEmpty()
+    val isRefreshing: Boolean get() = isLoading && stories.isNotEmpty()
+    val isEmpty: Boolean get() = !isLoading && stories.isEmpty() && errorMessage == null
+    val isSearchResultEmpty: Boolean get() = !isLoading && stories.isNotEmpty() && filteredStories.isEmpty()
+    val emptyMessage: String get() = when {
+        searchQuery.isNotBlank() -> "Tidak ada story yang cocok dengan pencarian '$searchQuery'"
+        showOnlyBookmarks -> "Belum ada story yang ditandai favorit"
+        showOnlyWithLocation -> "Belum ada story yang memiliki data lokasi"
+        else -> "Belum ada postingan story saat ini"
+    }
+}
 
 class HomeViewModel(
     private val storyRepository: StoryRepository,

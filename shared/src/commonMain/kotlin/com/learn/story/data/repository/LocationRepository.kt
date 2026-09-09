@@ -3,14 +3,21 @@ package com.learn.story.data.repository
 import com.learn.story.data.remote.GeocodingPlace
 import com.learn.story.data.remote.GeocodingService
 
-class LocationRepository(
+interface LocationRepository {
+    suspend fun reverseGeocode(lat: Double, lon: Double): String?
+    suspend fun searchPlaces(query: String): List<GeocodingPlace>
+}
+
+fun LocationRepository(geocodingService: GeocodingService): LocationRepository = LocationRepositoryImpl(geocodingService)
+
+class LocationRepositoryImpl(
     private val geocodingService: GeocodingService
-) {
-    suspend fun reverseGeocode(lat: Double, lon: Double): String? {
+) : LocationRepository {
+    override suspend fun reverseGeocode(lat: Double, lon: Double): String? {
         return geocodingService.reverseGeocode(lat, lon)
     }
 
-    suspend fun searchPlaces(query: String): List<GeocodingPlace> {
+    override suspend fun searchPlaces(query: String): List<GeocodingPlace> {
         return geocodingService.searchPlaces(query)
     }
 }

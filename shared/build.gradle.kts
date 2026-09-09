@@ -42,6 +42,9 @@ kotlin {
             implementation(libs.ktor.client.okhttp)
             implementation(libs.androidx.activity.compose)
         }
+        androidUnitTest.dependencies {
+            implementation(libs.robolectric)
+        }
         iosMain.dependencies {
             implementation(libs.ktor.client.darwin)
         }
@@ -90,8 +93,11 @@ kotlin {
             implementation(libs.androidx.sqlite.bundled)
         }
         commonTest.dependencies {
-            implementation(libs.kotlin.test)
+            implementation(kotlin("test"))
+            implementation(libs.kotlinx.coroutines.test)
             implementation(libs.multiplatform.settings.test)
+            implementation(libs.ktor.client.mock)
+            implementation(libs.compose.ui.test)
         }
         // jsMain.dependencies {
         //     implementation(libs.wrappers.browser)
@@ -108,6 +114,9 @@ android {
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_11
         targetCompatibility = JavaVersion.VERSION_11
+    }
+    testOptions {
+        unitTests.isIncludeAndroidResources = true
     }
 }
 

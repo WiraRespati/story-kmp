@@ -15,6 +15,14 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 
+sealed interface AddStorySubmitState {
+    data object Idle : AddStorySubmitState
+    data object Loading : AddStorySubmitState
+    data object Success : AddStorySubmitState
+    data class OfflineSaved(val message: String? = null) : AddStorySubmitState
+    data class Error(val message: String) : AddStorySubmitState
+}
+
 data class AddStoryUiState(
     val photoBytes: ByteArray? = null,
     val description: String = "",
@@ -26,13 +34,19 @@ data class AddStoryUiState(
     val isSearchingLocation: Boolean = false,
     val locationSearchResults: List<GeocodingPlace> = emptyList(),
     val showLocationPicker: Boolean = false,
-    val isLoading: Boolean = false,
     val descriptionError: String? = null,
     val photoError: String? = null,
-    val errorMessage: String? = null,
-    val isSuccess: Boolean = false,
-    val savedOffline: Boolean = false
-)
+    val submitState: AddStorySubmitState = AddStorySubmitState.Idle
+) {
+    val isLoading: Boolean get() = submitState is AddStorySubmitState.Loading
+    val isSuccess: Boolean get() = submitState is AddStorySubmitState.Success
+    val savedOffline: Boolean get() = submitState is AddStorySubmitState.OfflineSaved
+    val errorMessage: String? get() = when (val state = submitState) {
+        is AddStorySubmitState.Error -> state.message
+        is AddStorySubmitState.OfflineSaved -> state.message
+        else -> null
+    }
+}
 
 class AddStoryViewModel(
     private val storyRepository: StoryRepository,
@@ -49,7 +63,7 @@ class AddStoryViewModel(
             it.copy(
                 photoBytes = bytes,
                 photoError = null,
-                errorMessage = null
+                submitState = if (it.submitState is AddStorySubmitState.Error) AddStorySubmitState.Idle else it.submitState
             )
         }
     }
@@ -59,7 +73,7 @@ class AddStoryViewModel(
             it.copy(
                 description = text,
                 descriptionError = null,
-                errorMessage = null
+                submitState = if (it.submitState is AddStorySubmitState.Error) AddStorySubmitState.Idle else it.submitState
             )
         }
     }
@@ -172,10 +186,10 @@ class AddStoryViewModel(
             flow.collect { result ->
                 when (result) {
                     is ApiResult.Loading -> {
-                        _uiState.update { it.copy(isLoading = true, errorMessage = null) }
+                        _uiState.update { it.copy(submitState = AddStorySubmitState.Loading) }
                     }
                     is ApiResult.Success -> {
-                        _uiState.update { it.copy(isLoading = false, isSuccess = true) }
+                        _uiState.update { it.copy(submitState = AddStorySubmitState.Success) }
                     }
                     is ApiResult.Error -> {
                         // Simpan otomatis ke antrean draft offline jika koneksi gagal
@@ -190,9 +204,9 @@ class AddStoryViewModel(
                         )
                         _uiState.update {
                             it.copy(
-                                isLoading = false,
-                                savedOffline = true,
-                                errorMessage = "Gagal terhubung (${result.message}). Story berhasil disimpan ke antrean offline!"
+                                submitState = AddStorySubmitState.OfflineSaved(
+                                    "Gagal terhubung (${result.message}). Story berhasil disimpan ke antrean offline!"
+                                )
                             )
                         }
                     }
@@ -217,16 +231,16 @@ class AddStoryViewModel(
                 isGuest = state.isGuest,
                 locationName = state.locationName
             )
-            _uiState.update { it.copy(savedOffline = true) }
+            _uiState.update { it.copy(submitState = AddStorySubmitState.OfflineSaved()) }
         }
     }
 
     fun resetSuccess() {
-        _uiState.update { it.copy(isSuccess = false, savedOffline = false) }
+        _uiState.update { it.copy(submitState = AddStorySubmitState.Idle) }
     }
 
     fun clearError() {
-        _uiState.update { it.copy(errorMessage = null) }
+        _uiState.update { it.copy(submitState = AddStorySubmitState.Idle) }
     }
 }
 

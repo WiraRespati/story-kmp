@@ -16,7 +16,9 @@ data class SavedStoriesUiState(
     val offlineDrafts: List<OfflineStoryDraft> = emptyList(),
     val isSyncing: Boolean = false,
     val syncMessage: String? = null
-)
+) {
+    val isEmpty: Boolean get() = bookmarkedStories.isEmpty() && offlineDrafts.isEmpty()
+}
 
 class SavedStoriesViewModel(
     private val storyRepository: StoryRepository

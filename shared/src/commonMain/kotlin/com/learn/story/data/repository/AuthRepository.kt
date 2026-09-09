@@ -7,11 +7,24 @@ import com.learn.story.data.model.RegisterRequest
 import com.learn.story.data.model.UserModel
 import com.learn.story.data.remote.StoryApiService
 
-class AuthRepository(
+interface AuthRepository {
+    suspend fun register(name: String, email: String, password: String): ApiResult<String>
+    suspend fun login(email: String, password: String): ApiResult<UserModel>
+    suspend fun logout()
+    fun isUserLoggedIn(): Boolean
+    fun getUserName(): String?
+}
+
+fun AuthRepository(
+    apiService: StoryApiService,
+    tokenStorage: TokenStorage
+): AuthRepository = AuthRepositoryImpl(apiService, tokenStorage)
+
+class AuthRepositoryImpl(
     private val apiService: StoryApiService,
     private val tokenStorage: TokenStorage
-) {
-    suspend fun register(name: String, email: String, password: String): ApiResult<String> {
+) : AuthRepository {
+    override suspend fun register(name: String, email: String, password: String): ApiResult<String> {
         return try {
             val response = apiService.register(
                 RegisterRequest(name = name, email = email, password = password)
@@ -27,7 +40,7 @@ class AuthRepository(
         }
     }
 
-    suspend fun login(email: String, password: String): ApiResult<UserModel> {
+    override suspend fun login(email: String, password: String): ApiResult<UserModel> {
         return try {
             val response = apiService.login(
                 LoginRequest(email = email, password = password)
@@ -55,11 +68,11 @@ class AuthRepository(
         }
     }
 
-    suspend fun logout() {
+    override suspend fun logout() {
         tokenStorage.clear()
     }
 
-    fun isUserLoggedIn(): Boolean = tokenStorage.isLoggedIn()
+    override fun isUserLoggedIn(): Boolean = tokenStorage.isLoggedIn()
 
-    fun getUserName(): String? = tokenStorage.getUserName()
+    override fun getUserName(): String? = tokenStorage.getUserName()
 }

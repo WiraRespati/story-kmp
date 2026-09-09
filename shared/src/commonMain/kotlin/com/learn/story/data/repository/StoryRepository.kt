@@ -20,28 +20,74 @@ import kotlinx.coroutines.flow.map
 import kotlin.io.encoding.Base64
 import kotlin.io.encoding.ExperimentalEncodingApi
 
-class StoryRepository(
+interface StoryRepository {
+    val storyUploadedEvent: SharedFlow<Unit>
+    val bookmarkedIdsFlow: Flow<Set<String>>
+    val bookmarkedStoriesFlow: Flow<List<Story>>
+    val offlineDraftsFlow: Flow<List<OfflineStoryDraft>>
+    val cachedStoriesFlow: Flow<List<Story>>
+
+    fun getStories(page: Int = 1, size: Int = 20, location: Int = 0): Flow<ApiResult<List<Story>>>
+    fun getStoryDetail(id: String): Flow<ApiResult<Story>>
+    fun uploadStory(
+        description: String,
+        photoBytes: ByteArray,
+        lat: Double? = null,
+        lon: Double? = null
+    ): Flow<ApiResult<String>>
+    fun uploadGuestStory(
+        description: String,
+        photoBytes: ByteArray,
+        lat: Double? = null,
+        lon: Double? = null
+    ): Flow<ApiResult<String>>
+    suspend fun toggleBookmark(storyId: String): Boolean
+    suspend fun isStoryBookmarked(storyId: String): Boolean
+    suspend fun getBookmarkedIds(): Set<String>
+    suspend fun saveOfflineDraft(
+        id: String,
+        description: String,
+        photoBytes: ByteArray,
+        lat: Double? = null,
+        lon: Double? = null,
+        isGuest: Boolean = false,
+        locationName: String? = null
+    )
+    suspend fun getOfflineDrafts(): List<OfflineStoryDraft>
+    suspend fun removeOfflineDraft(draftId: String)
+    suspend fun syncOfflineDrafts(): Int
+    fun uploadDraft(draft: OfflineStoryDraft): Flow<ApiResult<String>>
+}
+
+fun StoryRepository(
+    apiService: StoryApiService,
+    storyDao: StoryDao,
+    bookmarkDao: BookmarkDao,
+    offlineDraftDao: OfflineDraftDao
+): StoryRepository = StoryRepositoryImpl(apiService, storyDao, bookmarkDao, offlineDraftDao)
+
+class StoryRepositoryImpl(
     private val apiService: StoryApiService,
     private val storyDao: StoryDao,
     private val bookmarkDao: BookmarkDao,
     private val offlineDraftDao: OfflineDraftDao
-) {
+) : StoryRepository {
     private val _storyUploadedEvent = MutableSharedFlow<Unit>(extraBufferCapacity = 1)
-    val storyUploadedEvent: SharedFlow<Unit> = _storyUploadedEvent.asSharedFlow()
+    override val storyUploadedEvent: SharedFlow<Unit> = _storyUploadedEvent.asSharedFlow()
 
     // Reactive streams from Room SQLite Database
-    val bookmarkedIdsFlow: Flow<Set<String>> = bookmarkDao.getBookmarkedStoryIdsFlow().map { it.toSet() }
-    val bookmarkedStoriesFlow: Flow<List<Story>> = storyDao.getBookmarkedStoriesFlow().map { list ->
+    override val bookmarkedIdsFlow: Flow<Set<String>> = bookmarkDao.getBookmarkedStoryIdsFlow().map { it.toSet() }
+    override val bookmarkedStoriesFlow: Flow<List<Story>> = storyDao.getBookmarkedStoriesFlow().map { list ->
         list.map { it.toDomain() }
     }
-    val offlineDraftsFlow: Flow<List<OfflineStoryDraft>> = offlineDraftDao.getDraftsFlow().map { list ->
+    override val offlineDraftsFlow: Flow<List<OfflineStoryDraft>> = offlineDraftDao.getDraftsFlow().map { list ->
         list.map { it.toDomain() }
     }
-    val cachedStoriesFlow: Flow<List<Story>> = storyDao.getStoriesFlow().map { list ->
+    override val cachedStoriesFlow: Flow<List<Story>> = storyDao.getStoriesFlow().map { list ->
         list.map { it.toDomain() }
     }
 
-    fun getStories(page: Int = 1, size: Int = 20, location: Int = 0): Flow<ApiResult<List<Story>>> = flow {
+    override fun getStories(page: Int, size: Int, location: Int): Flow<ApiResult<List<Story>>> = flow {
         emit(ApiResult.Loading)
         try {
             val response = apiService.getStories(page = page, size = size, location = location)
@@ -77,7 +123,7 @@ class StoryRepository(
         }
     }
 
-    fun getStoryDetail(id: String): Flow<ApiResult<Story>> = flow {
+    override fun getStoryDetail(id: String): Flow<ApiResult<Story>> = flow {
         emit(ApiResult.Loading)
         try {
             val response = apiService.getStoryDetail(id)
@@ -102,11 +148,11 @@ class StoryRepository(
         }
     }
 
-    fun uploadStory(
+    override fun uploadStory(
         description: String,
         photoBytes: ByteArray,
-        lat: Double? = null,
-        lon: Double? = null
+        lat: Double?,
+        lon: Double?
     ): Flow<ApiResult<String>> = flow {
         emit(ApiResult.Loading)
         try {
@@ -128,11 +174,11 @@ class StoryRepository(
         }
     }
 
-    fun uploadGuestStory(
+    override fun uploadGuestStory(
         description: String,
         photoBytes: ByteArray,
-        lat: Double? = null,
-        lon: Double? = null
+        lat: Double?,
+        lon: Double?
     ): Flow<ApiResult<String>> = flow {
         emit(ApiResult.Loading)
         try {
@@ -155,7 +201,7 @@ class StoryRepository(
     }
 
     // --- Bookmarks Feature (Room SQLite) ---
-    suspend fun toggleBookmark(storyId: String): Boolean {
+    override suspend fun toggleBookmark(storyId: String): Boolean {
         val isBookmarked = bookmarkDao.isBookmarked(storyId)
         return if (isBookmarked) {
             bookmarkDao.removeBookmark(storyId)
@@ -171,19 +217,19 @@ class StoryRepository(
         }
     }
 
-    suspend fun isStoryBookmarked(storyId: String): Boolean = bookmarkDao.isBookmarked(storyId)
-    suspend fun getBookmarkedIds(): Set<String> = bookmarkDao.getBookmarkedStoryIds().toSet()
+    override suspend fun isStoryBookmarked(storyId: String): Boolean = bookmarkDao.isBookmarked(storyId)
+    override suspend fun getBookmarkedIds(): Set<String> = bookmarkDao.getBookmarkedStoryIds().toSet()
 
     // --- Offline Mode / Outbox Queue (Room SQLite) ---
     @OptIn(ExperimentalEncodingApi::class)
-    suspend fun saveOfflineDraft(
+    override suspend fun saveOfflineDraft(
         id: String,
         description: String,
         photoBytes: ByteArray,
-        lat: Double? = null,
-        lon: Double? = null,
-        isGuest: Boolean = false,
-        locationName: String? = null
+        lat: Double?,
+        lon: Double?,
+        isGuest: Boolean,
+        locationName: String?
     ) {
         val base64 = Base64.encode(photoBytes)
         val draft = OfflineStoryDraft(
@@ -199,11 +245,11 @@ class StoryRepository(
         offlineDraftDao.insertDraft(draft.toEntity())
     }
 
-    suspend fun getOfflineDrafts(): List<OfflineStoryDraft> = offlineDraftDao.getDrafts().map { it.toDomain() }
+    override suspend fun getOfflineDrafts(): List<OfflineStoryDraft> = offlineDraftDao.getDrafts().map { it.toDomain() }
 
-    suspend fun removeOfflineDraft(draftId: String) = offlineDraftDao.deleteDraftById(draftId)
+    override suspend fun removeOfflineDraft(draftId: String) = offlineDraftDao.deleteDraftById(draftId)
 
-    suspend fun syncOfflineDrafts(): Int {
+    override suspend fun syncOfflineDrafts(): Int {
         val drafts = getOfflineDrafts()
         if (drafts.isEmpty()) return 0
         var successCount = 0
@@ -219,7 +265,7 @@ class StoryRepository(
     }
 
     @OptIn(ExperimentalEncodingApi::class)
-    fun uploadDraft(draft: OfflineStoryDraft): Flow<ApiResult<String>> {
+    override fun uploadDraft(draft: OfflineStoryDraft): Flow<ApiResult<String>> {
         val bytes = try {
             Base64.decode(draft.photoBase64)
         } catch (_: Exception) {

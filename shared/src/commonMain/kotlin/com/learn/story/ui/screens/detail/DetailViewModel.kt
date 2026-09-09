@@ -18,7 +18,11 @@ data class DetailUiState(
     val isBookmarked: Boolean = false,
     val isLoading: Boolean = false,
     val errorMessage: String? = null
-)
+) {
+    val isInitialLoading: Boolean get() = isLoading && story == null
+    val isEmpty: Boolean get() = !isLoading && story == null && errorMessage == null
+    val isSuccess: Boolean get() = story != null
+}
 
 class DetailViewModel(
     private val storyRepository: StoryRepository,

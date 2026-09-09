@@ -494,24 +494,71 @@ STORY_API_BASE_URL=https://story-api.dicoding.dev/v1/
 
 ---
 
-## 🧪 Pengujian Unit & Verifikasi (Testing)
+## 🧩 Pola State UI Modern (Idle, Loading, Success, Error, Empty)
 
-Aplikasi dilengkapi dengan rangkaian pengujian unit cross-platform di `shared/src/commonTest` ([SharedCommonTest.kt](file:///Users/mac/StudioProjects/Story/shared/src/commonTest/kotlin/com/learn/story/SharedCommonTest.kt)) yang mencakup:
-* **Verifikasi Model Data:** Validasi integritas atribut `Story` dan `OfflineStoryDraft`.
-* **Pemformatan Waktu:** Pengujian parser tanggal ISO-8601 ke format ramah pengguna (`YYYY-MM-DD • HH:mm`).
-* **HTML Generator Peta:** Memverifikasi script Leaflet JS, URL CDN, layer OpenStreetMap, dan script bridge komunikasi cross-platform.
-* **Theme Repository:** Pengujian persistensi preferensi tema (`Light`, `Dark`, `System`) menggunakan `MapSettings` in-memory.
+Aplikasi menerapkan pola State UI terstandarisasi yang membedakan penanganan antara **Layar Berbasis Aksi (Form/Action)** dan **Layar Berbasis Feed/Koleksi**:
 
-### Menjalankan Unit Test:
+### 1. Layar Berbasis Aksi (`Login`, `Register`, `AddStory`)
+Menggunakan `sealed interface` terpisah untuk status submisi (`submitState`) agar status tidak ambigu (*impossible states are unrepresentable*):
+* `Idle`: Kondisi awal form sebelum pengguna menekan tombol aksi.
+* `Loading`: Sedang mengirim data ke server atau memproses kompresi gambar.
+* `Success`: Aksi berhasil, memicu efek samping navigasi atau snackbar di Compose.
+* `Error(val message: String)`: Gagal dengan pesan error yang deskriptif.
+* `OfflineSaved(val message: String)`: Khusus unggah cerita saat tidak ada internet; otomatis beralih ke antrean Room SQLite (*Outbox*).
+
+### 2. Layar Berbasis Feed & Koleksi (`Home`, `SavedStories`, `Detail`)
+Menggunakan `data class` komprehensif dengan *computed properties* reaktif:
+* `isInitialLoading`: `true` saat pertama kali memuat dan belum ada cache di layar (menampilkan skeleton shimmer).
+* `isRefreshing`: `true` saat *pull-to-refresh* atau sinkronisasi background (data feed tetap terlihat, hanya menampilkan progress bar tipis di atas).
+* `isEmpty`: `true` saat data benar-benar kosong dan bukan sedang loading/error.
+* `isSearchResultEmpty`: `true` saat filter pencarian tidak menghasilkan item yang cocok.
+* `emptyMessage`: Pesan kontekstual dinamis sesuai filter yang sedang aktif (Pencarian, Bookmark, atau Lokasi).
+
+---
+
+## 🧪 Pengujian & Piramida Testing (Unit, Integration & UI Testing)
+
+Proyek Story KMP dilengkapi **81 Pengujian Otomatis (100% Pass dalam ~4.3 detik)** yang mencakup seluruh tingkatan piramida pengujian modern:
+
+### 1. 🔬 Unit Testing (56 Pengujian)
+Pengujian logika bisnis, Unidirectional Data Flow (UDF), dan transisi *UI State* di `shared/src/commonTest` menggunakan `kotlinx-coroutines-test` dan `kotlin.test`:
+* **`LoginViewModelTest` (9 pengujian):** State awal, validasi input email & password minimal 8 karakter, alur auth sukses, penanganan error API, dan pembersihan pesan kesalahan.
+* **`RegisterViewModelTest` (6 pengujian):** Validasi field pendaftaran, alur sukses pembuatan akun, dan pencegahan duplikasi email.
+* **`HomeViewModelTest` (8 pengujian):** Pemuatan instan dari Room SQLite (*offline-first*), transisi `Content`, `Empty`, `InitialLoading`, `Refreshing`, filter pencarian, filter lokasi, filter bookmark, dan alur keluar akun.
+* **`AddStoryViewModelTest` (8 pengujian):** Validasi gambar wajib $\le$ 1 MB, alur unggah online, *auto-fallback* ke antrean draft SQLite saat offline, dan pemilihan koordinat lokasi.
+* **`DetailViewModelTest` (4 pengujian):** Pemuatan detail cerita, reverse-geocoding koordinat GPS, dan toggle bookmark favorit.
+* **`SavedStoriesViewModelTest` (4 pengujian):** Observasi reaktif cerita tersimpan, antrean outbox, penghapusan draft offline, dan pemicuan sinkronisasi massal (*batch sync*).
+* **`StoryMapViewModelTest` (4 pengujian):** Filter cerita berkoordinat, pemilihan marker peta aktif, dan state loading/error.
+* **`ProfileViewModelTest` (5 pengujian):** Sesi user, info akun aktif, dan alur logout.
+* **`SharedCommonTest` (8 pengujian):** Verifikasi data model `Story` & `OfflineStoryDraft`, formatter tanggal ISO-8601, Leaflet HTML template, Theme repository, dan validasi email/password.
+
+### 2. 🌐 Integration Testing (6 Pengujian)
+Pengujian integrasi lapisan jaringan dan serialisasi data di `shared/src/commonTest/kotlin/com/learn/story/data/remote/StoryApiServiceIntegrationTest.kt` menggunakan Ktor `MockEngine`:
+* **Autentikasi Login:** Verifikasi deserialisasi respons JSON JWT token (`loginResult.token`, `userId`, `name`).
+* **Penanganan HTTP 401 Unauthorized:** Pengujian lemparan `ClientRequestException` dan penanganan status respons non-200.
+* **Pendaftaran Akun:** Verifikasi penulisan payload JSON body permintaan registrasi.
+* **Pagination & Query Parameters:** Verifikasi pembentukan URL dengan parameter `page`, `size`, dan `location`.
+* **Detail Cerita:** Pengujian deserialisasi objek nested `story` dari response API.
+* **Resiliensi Jaringan:** Pengujian ketahanan saat terjadi `ConnectTimeoutException` pada koneksi server.
+
+### 3. 🎨 UI & Component Testing (19 Pengujian)
+Pengujian tampilan deklaratif dan interaktivitas antarmuka di `shared/src/androidUnitTest/kotlin/com/learn/story/ui/` menggunakan **Compose Multiplatform UI Test (`androidx.compose.ui.test.v2.runComposeUiTest`)** dan Robolectric:
+* **`AppButtonUiTest` (3 pengujian):** Render teks tombol, responsivitas klik saat aktif, pencegahan klik saat dinonaktifkan (`enabled = false`), dan tampilan spinner `CircularProgressIndicator` saat loading.
+* **`AppTextFieldUiTest` (3 pengujian):** Render label, pengetikan masukan teks (*typing text*), penayangan pesan validasi error, dan toggle tombol Show/Hide visibilitas password.
+* **`ErrorAndEmptyStateUiTest` (2 pengujian):** Penayangan pesan kesalahan dan tombol "Coba Lagi" (`onRetry`), serta tampilan status kosong dan tombol "Muat Ulang" (`onRefresh`).
+* **`StoryCardUiTest` (3 pengujian):** Render nama pembuat, tanggal terformat, deskripsi cerita, badge lokasi GPS, dan interaktivitas ikon bookmark (tambah/hapus bookmark).
+* **`LoginScreenUiTest` (4 pengujian):** Render elemen layar masuk, input formulir dan klik "Masuk", penampilan pesan error validasi, dan navigasi ke registrasi.
+* **`RegisterScreenUiTest` (4 pengujian):** Render seluruh formulir registrasi, input nama, email, password, klik tombol "Daftar", penayangan error validasi, dan navigasi kembali ke login.
+
+---
+
+### Menjalankan Seluruh Pengujian:
 ```bash
-# Menjalankan unit test di lingkungan JVM Android
+# Menjalankan seluruh pengujian (Unit + Integration + UI Test)
+./gradlew test
+
+# Menjalankan pengujian debug unit test secara spesifik
 ./gradlew :shared:testDebugUnitTest
-
-# Menjalankan unit test di lingkungan iOS Simulator (macOS)
-./gradlew :shared:iosSimulatorArm64Test
-
-# Menjalankan seluruh pengujian multiplatform
-./gradlew :shared:allTests
 ```
 
 ---

@@ -11,15 +11,24 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 
+sealed interface AuthSubmitState {
+    data object Idle : AuthSubmitState
+    data object Loading : AuthSubmitState
+    data object Success : AuthSubmitState
+    data class Error(val message: String) : AuthSubmitState
+}
+
 data class LoginUiState(
     val email: String = "",
     val password: String = "",
     val emailError: String? = null,
     val passwordError: String? = null,
-    val isLoading: Boolean = false,
-    val errorMessage: String? = null,
-    val isSuccess: Boolean = false
-)
+    val submitState: AuthSubmitState = AuthSubmitState.Idle
+) {
+    val isLoading: Boolean get() = submitState is AuthSubmitState.Loading
+    val isSuccess: Boolean get() = submitState is AuthSubmitState.Success
+    val errorMessage: String? get() = (submitState as? AuthSubmitState.Error)?.message
+}
 
 class LoginViewModel(
     private val authRepository: AuthRepository
@@ -33,7 +42,7 @@ class LoginViewModel(
             it.copy(
                 email = email,
                 emailError = null,
-                errorMessage = null
+                submitState = if (it.submitState is AuthSubmitState.Error) AuthSubmitState.Idle else it.submitState
             )
         }
     }
@@ -43,7 +52,7 @@ class LoginViewModel(
             it.copy(
                 password = password,
                 passwordError = null,
-                errorMessage = null
+                submitState = if (it.submitState is AuthSubmitState.Error) AuthSubmitState.Idle else it.submitState
             )
         }
     }
@@ -70,28 +79,28 @@ class LoginViewModel(
         val password = _uiState.value.password
 
         viewModelScope.launch {
-            _uiState.update { it.copy(isLoading = true, errorMessage = null) }
+            _uiState.update { it.copy(submitState = AuthSubmitState.Loading) }
             when (val result = authRepository.login(email, password)) {
                 is ApiResult.Success -> {
-                    _uiState.update { it.copy(isLoading = false, isSuccess = true) }
+                    _uiState.update { it.copy(submitState = AuthSubmitState.Success) }
                 }
                 is ApiResult.Error -> {
                     _uiState.update {
-                        it.copy(isLoading = false, errorMessage = result.message)
+                        it.copy(submitState = AuthSubmitState.Error(result.message))
                     }
                 }
                 is ApiResult.Loading -> {
-                    _uiState.update { it.copy(isLoading = true) }
+                    _uiState.update { it.copy(submitState = AuthSubmitState.Loading) }
                 }
             }
         }
     }
 
     fun resetSuccess() {
-        _uiState.update { it.copy(isSuccess = false) }
+        _uiState.update { it.copy(submitState = AuthSubmitState.Idle) }
     }
 
     fun clearError() {
-        _uiState.update { it.copy(errorMessage = null) }
+        _uiState.update { it.copy(submitState = AuthSubmitState.Idle) }
     }
 }

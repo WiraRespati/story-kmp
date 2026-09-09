@@ -1,8 +1,8 @@
 package com.learn.story
 
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.learn.story.data.repository.ThemeRepository
 import com.learn.story.di.appModule
 import com.learn.story.ui.navigation.AppNavHost
@@ -24,8 +24,8 @@ fun App() {
 private fun AppContent(
     themeRepository: ThemeRepository = koinInject()
 ) {
-    val themeMode by themeRepository.themeMode.collectAsState()
-    val fontFamily by themeRepository.fontFamily.collectAsState()
+    val themeMode by themeRepository.themeMode.collectAsStateWithLifecycle()
+    val fontFamily by themeRepository.fontFamily.collectAsStateWithLifecycle()
     StoryTheme(themeMode = themeMode, fontFamily = fontFamily) {
         AppNavHost()
     }
