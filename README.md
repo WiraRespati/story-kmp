@@ -16,17 +16,12 @@ Aplikasi **Story Sharing** modern kelas produksi berbasis **Kotlin Multiplatform
 ## 📌 Daftar Isi
 - [✨ Fitur Unggulan](#-fitur-unggulan)
 - [🛠️ Tech Stack & Versi Dependensi](#️-tech-stack--versi-dependensi)
-- [🏗️ Arsitektur Aplikasi & Alur Data (MVVM + Repository)](#️-arsitektur-aplikasi--alur-data-mvvm--repository)
-- [📸 Deep Dive: Pipeline Kompresi Gambar (< 1 MB)](#-deep-dive-pipeline-kompresi-gambar--1-mb)
-- [💾 Deep Dive: Mode Offline & Outbox Queue (Room KMP)](#-deep-dive-mode-offline--outbox-queue-room-kmp)
-- [🛡️ Deep Dive: Keamanan & Hiding Base URL (BuildKonfig)](#️-deep-dive-keamanan--hiding-base-url-buildkonfig)
-- [🗺️ Deep Dive: Peta Interaktif & Ketahanan WebView (Leaflet JS + OSM)](#️-deep-dive-peta-interaktif--ketahanan-webview-leaflet-js--osm)
-- [💉 Deep Dive: Dependency Injection (Koin Multiplatform)](#-deep-dive-dependency-injection-koin-multiplatform)
+- [🏗️ Arsitektur Aplikasi (MVVM + Repository)](#️-arsitektur-aplikasi-mvvm--repository)
+- [🧩 Pola State UI](#-pola-state-ui)
+- [🧪 Pengujian & Piramida Testing](#-pengujian--piramida-testing-unit-integration--ui-testing)
 - [📂 Struktur Direktori Proyek](#-struktur-direktori-proyek)
 - [🚀 Setup & Panduan Menjalankan Project](#-setup--panduan-menjalankan-project)
-- [🧪 Pengujian Unit & Verifikasi (Testing)](#-pengujian-unit--verifikasi-testing)
 - [💻 Perintah Gradle yang Sering Digunakan](#-perintah-gradle-yang-sering-digunakan)
-- [❓ Tanya Jawab & Pemecahan Masalah (FAQ)](#-tanya-jawab--pemecahan-masalah-faq)
 - [📄 Lisensi](#-lisensi)
 
 ---
@@ -171,183 +166,72 @@ Mengikuti standar mobile modern (**Android Material 3** & **iOS Human Interface 
 
 ---
 
-## 📸 Deep Dive: Pipeline Kompresi Gambar (< 1 MB)
+## 🧩 Pola State UI Modern (Idle, Loading, Success, Error, Empty)
 
-Salah satu tantangan terbesar pada aplikasi berbagi foto adalah mencegah error jaringan karena batas ukuran file upload di server (maksimal 1 MB), sekaligus menjaga aplikasi agar tidak mengalami *OutOfMemory (OOM)* pada perangkat dengan kamera modern beresolusi tinggi (48 MP hingga 108 MP).
+Aplikasi menerapkan pola State UI terstandarisasi yang membedakan penanganan antara **Layar Berbasis Aksi (Form/Action)** dan **Layar Berbasis Feed/Koleksi**:
 
-```
-   Foto Kamera / Galeri (10 MB - 50 MB)
-                   │
-                   ▼
-┌─────────────────────────────────────────────────────┐
-│ 1. Pembacaan EXIF Orientation (Auto-Rotate)         │
-│    Mendeteksi rotasi kamera asli (90°, 180°, 270°)  │
-└──────────────────┬──────────────────────────────────┘
-                   ▼
-┌─────────────────────────────────────────────────────┐
-│ 2. Subsampling Memory-Safe (inSampleSize)           │
-│    Mencegah crash OOM sebelum memuat bitmap utuh    │
-└──────────────────┬──────────────────────────────────┘
-                   ▼
-┌─────────────────────────────────────────────────────┐
-│ 3. Downscaling Proporsional (Max Dimension 1280px)  │
-│    Mempertahankan rasio aspek asli gambar           │
-└──────────────────┬──────────────────────────────────┘
-                   ▼
-┌─────────────────────────────────────────────────────┐
-│ 4. Kompresi Kualitas JPEG Bertahap (Iterative)      │
-│    Looping reduksi kualitas (85% -> 75% -> ... 15%) │
-└──────────────────┬──────────────────────────────────┘
-                   ▼
-    Ukuran <= 950 KB? ────► [TIDAK] ──► 5. Adaptive Downscale (Resize 80%)
-           │                                          │
-        [YA] ◄────────────────────────────────────────┘
-           ▼
-   Target Tercapai (< 950 KB) -> Tampilkan Badge Ukuran di UI & Siap Upload!
-```
+### 1. Layar Berbasis Aksi (`Login`, `Register`, `AddStory`)
+Menggunakan `sealed interface` terpisah untuk status submisi (`submitState`) agar status tidak ambigu (*impossible states are unrepresentable*):
+* `Idle`: Kondisi awal form sebelum pengguna menekan tombol aksi.
+* `Loading`: Sedang mengirim data ke server atau memproses kompresi gambar.
+* `Success`: Aksi berhasil, memicu efek samping navigasi atau snackbar di Compose.
+* `Error(val message: String)`: Gagal dengan pesan error yang deskriptif.
+* `OfflineSaved(val message: String)`: Khusus unggah cerita saat tidak ada internet; otomatis beralih ke antrean Room SQLite (*Outbox*).
 
-### Implementasi Spesifik Platform:
-* **Android (`ImagePicker.android.kt`):**
-  * Menggunakan `android.media.ExifInterface` untuk menjaga orientasi gambar selalu tegak.
-  * Menggunakan `BitmapFactory.Options.inJustDecodeBounds = true` untuk menghitung rasio pemotongan memori (`inSampleSize`) tanpa mengalokasikan RAM besar.
-  * Menggunakan matriks transformasi dan `Bitmap.createScaledBitmap` untuk resolusi adaptif.
-* **iOS (`ImagePicker.ios.kt`):**
-  * Menggunakan `UIGraphicsBeginImageContextWithOptions` dan CoreGraphics untuk melakukan render ulang gambar secara proporsional.
-  * Menggunakan `UIImageJPEGRepresentation` dengan reduksi faktor kualitas bertahap hingga ukuran data berada di bawah batas target.
+### 2. Layar Berbasis Feed & Koleksi (`Home`, `SavedStories`, `Detail`)
+Menggunakan `data class` komprehensif dengan *computed properties* reaktif:
+* `isInitialLoading`: `true` saat pertama kali memuat dan belum ada cache di layar (menampilkan skeleton shimmer).
+* `isRefreshing`: `true` saat *pull-to-refresh* atau sinkronisasi background (data feed tetap terlihat, hanya menampilkan progress bar tipis di atas).
+* `isEmpty`: `true` saat data benar-benar kosong dan bukan sedang loading/error.
+* `isSearchResultEmpty`: `true` saat filter pencarian tidak menghasilkan item yang cocok.
+* `emptyMessage`: Pesan kontekstual dinamis sesuai filter yang sedang aktif (Pencarian, Bookmark, atau Lokasi).
 
 ---
 
-## 💾 Deep Dive: Mode Offline & Outbox Queue (Room KMP)
+## 🧪 Pengujian & Piramida Testing (Unit, Integration & UI Testing)
 
-Aplikasi mengimplementasikan pola **Offline-First with Network-Bound Resource** menggunakan **AndroidX Room KMP**:
+Proyek Story KMP dilengkapi **81 Pengujian Otomatis (100% Pass dalam ~4.3 detik)** yang mencakup seluruh tingkatan piramida pengujian modern:
 
-### 1. Struktur Database (`AppDatabase.kt`)
-* **`StoryEntity`:** Menyimpan cache feed cerita komunitas (ID, nama, deskripsi, photoUrl, createdAt, lat, lon).
-* **`BookmarkEntity`:** Menyimpan daftar cerita yang ditandai sebagai favorit secara lokal beserta timestamp penandaan.
-* **`OfflineDraftEntity`:** Menyimpan cerita yang dibuat saat offline:
-  * ID unik (UUID generator).
-  * Deskripsi cerita.
-  * Foto terkompresi yang di-encode ke format **Base64** di dalam database SQLite.
-  * Titik koordinat lokasi (`lat`, `lon`) dan nama tempat (`locationName`).
-  * Status pengunggah (`isGuest`).
+### 1. 🔬 Unit Testing (56 Pengujian)
+Pengujian logika bisnis, Unidirectional Data Flow (UDF), dan transisi *UI State* di `shared/src/commonTest` menggunakan `kotlinx-coroutines-test` dan `kotlin.test`:
+* **`LoginViewModelTest` (9 pengujian):** State awal, validasi input email & password minimal 8 karakter, alur auth sukses, penanganan error API, dan pembersihan pesan kesalahan.
+* **`RegisterViewModelTest` (6 pengujian):** Validasi field pendaftaran, alur sukses pembuatan akun, dan pencegahan duplikasi email.
+* **`HomeViewModelTest` (8 pengujian):** Pemuatan instan dari Room SQLite (*offline-first*), transisi `Content`, `Empty`, `InitialLoading`, `Refreshing`, filter pencarian, filter lokasi, filter bookmark, dan alur keluar akun.
+* **`AddStoryViewModelTest` (8 pengujian):** Validasi gambar wajib $\le$ 1 MB, alur unggah online, *auto-fallback* ke antrean draft SQLite saat offline, dan pemilihan koordinat lokasi.
+* **`DetailViewModelTest` (4 pengujian):** Pemuatan detail cerita, reverse-geocoding koordinat GPS, dan toggle bookmark favorit.
+* **`SavedStoriesViewModelTest` (4 pengujian):** Observasi reaktif cerita tersimpan, antrean outbox, penghapusan draft offline, dan pemicuan sinkronisasi massal (*batch sync*).
+* **`StoryMapViewModelTest` (4 pengujian):** Filter cerita berkoordinat, pemilihan marker peta aktif, dan state loading/error.
+* **`ProfileViewModelTest` (5 pengujian):** Sesi user, info akun aktif, dan alur logout.
+* **`SharedCommonTest` (8 pengujian):** Verifikasi data model `Story` & `OfflineStoryDraft`, formatter tanggal ISO-8601, Leaflet HTML template, Theme repository, dan validasi email/password.
 
-### 2. Mekanisme Sinkronisasi Outbox:
-* Saat pengguna menekan "Unggah" tanpa adanya jaringan internet, repository otomatis menyimpan cerita ke `OfflineDraftDao`.
-* Pengguna mendapatkan notifikasi visual bahwa cerita disimpan di antrean offline.
-* Pada halaman **Tersimpan & Draft**, pengguna dapat melihat seluruh daftar draft dan memicu sinkronisasi massal (*batch upload*) ketika koneksi internet telah kembali normal.
+### 2. 🌐 Integration Testing (6 Pengujian)
+Pengujian integrasi lapisan jaringan dan serialisasi data di `shared/src/commonTest/kotlin/com/learn/story/data/remote/StoryApiServiceIntegrationTest.kt` menggunakan Ktor `MockEngine`:
+* **Autentikasi Login:** Verifikasi deserialisasi respons JSON JWT token (`loginResult.token`, `userId`, `name`).
+* **Penanganan HTTP 401 Unauthorized:** Pengujian lemparan `ClientRequestException` dan penanganan status respons non-200.
+* **Pendaftaran Akun:** Verifikasi penulisan payload JSON body permintaan registrasi.
+* **Pagination & Query Parameters:** Verifikasi pembentukan URL dengan parameter `page`, `size`, dan `location`.
+* **Detail Cerita:** Pengujian deserialisasi objek nested `story` dari response API.
+* **Resiliensi Jaringan:** Pengujian ketahanan saat terjadi `ConnectTimeoutException` pada koneksi server.
 
----
-
-## 🛡️ Deep Dive: Keamanan & Hiding Base URL (BuildKonfig)
-
-Untuk mematuhi standar keamanan aplikasi modern dan mencegah kebocoran alamat API maupun secret key di repositori terbuka (seperti GitHub), Base URL tidak ditulis di dalam kode Kotlin.
-
-### Cara Kerja:
-1. File **[local.properties](file:///Users/mac/StudioProjects/Story/local.properties)** (yang otomatis terdaftar pada `.gitignore`) menampung variabel konfigurasi:
-   ```properties
-   STORY_API_BASE_URL=https://story-api.dicoding.dev/v1/
-   ```
-2. Plugin **`com.codingfeline.buildkonfig`** pada `shared/build.gradle.kts` membaca variabel tersebut saat proses build:
-   ```kotlin
-   val storyApiBaseUrl: String = localProps.getProperty("STORY_API_BASE_URL")
-       ?: (project.findProperty("STORY_API_BASE_URL") as? String)
-       ?: ""
-
-   buildkonfig {
-       packageName = "com.learn.story"
-       defaultConfigs {
-           buildConfigField(STRING, "BASE_URL", storyApiBaseUrl)
-       }
-   }
-   ```
-3. Kompiler men-generate berkas `BuildKonfig.kt` internal di dalam modul `shared` (`commonMain`):
-   ```kotlin
-   internal object BuildKonfig {
-       public val BASE_URL: String = "https://story-api.dicoding.dev/v1/"
-   }
-   ```
-4. `HttpClientFactory.kt` menggunakan `BuildKonfig.BASE_URL` secara aman:
-   ```kotlin
-   defaultRequest {
-       url(BuildKonfig.BASE_URL)
-   }
-   ```
-5. **Dukungan CI/CD:** Pada server CI/CD (seperti GitHub Actions), Base URL dapat di-inject secara langsung tanpa membuat file melalui parameter Gradle:
-   ```bash
-   ./gradlew assembleDebug -PSTORY_API_BASE_URL="https://story-api.dicoding.dev/v1/"
-   ```
+### 3. 🎨 UI & Component Testing (19 Pengujian)
+Pengujian tampilan deklaratif dan interaktivitas antarmuka di `shared/src/androidUnitTest/kotlin/com/learn/story/ui/` menggunakan **Compose Multiplatform UI Test (`androidx.compose.ui.test.v2.runComposeUiTest`)** dan Robolectric:
+* **`AppButtonUiTest` (3 pengujian):** Render teks tombol, responsivitas klik saat aktif, pencegahan klik saat dinonaktifkan (`enabled = false`), dan tampilan spinner `CircularProgressIndicator` saat loading.
+* **`AppTextFieldUiTest` (3 pengujian):** Render label, pengetikan masukan teks (*typing text*), penayangan pesan validasi error, dan toggle tombol Show/Hide visibilitas password.
+* **`ErrorAndEmptyStateUiTest` (2 pengujian):** Penayangan pesan kesalahan dan tombol "Coba Lagi" (`onRetry`), serta tampilan status kosong dan tombol "Muat Ulang" (`onRefresh`).
+* **`StoryCardUiTest` (3 pengujian):** Render nama pembuat, tanggal terformat, deskripsi cerita, badge lokasi GPS, dan interaktivitas ikon bookmark (tambah/hapus bookmark).
+* **`LoginScreenUiTest` (4 pengujian):** Render elemen layar masuk, input formulir dan klik "Masuk", penampilan pesan error validasi, dan navigasi ke registrasi.
+* **`RegisterScreenUiTest` (4 pengujian):** Render seluruh formulir registrasi, input nama, email, password, klik tombol "Daftar", penayangan error validasi, dan navigasi kembali ke login.
 
 ---
 
-## 🗺️ Deep Dive: Peta Interaktif & Ketahanan WebView (Leaflet JS + OSM)
+### Menjalankan Seluruh Pengujian:
+```bash
+# Menjalankan seluruh pengujian (Unit + Integration + UI Test)
+./gradlew test
 
-Sebagai alternatif modern dari Google Maps SDK yang membutuhkan kartu kredit dan konfigurasi API key kompleks:
-* **Ekosistem Terbuka & Zero API Key:** Menggunakan **Leaflet JS 1.9.4** dan ubin peta **OpenStreetMap Tile Layer** yang sepenuhnya gratis tanpa kuota berbayar.
-* **Performa Tinggi & Anti-Bottleneck:**
-  * **Global Cloudflare CDN:** Script dan stylesheet Leaflet dimuat melalui `cdnjs.cloudflare.com` yang terdistribusi secara global dengan uptime 100%.
-  * **Tile Subdomain Round-Robin:** URL tile menggunakan pola `https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png` dengan subdomain `['a', 'b', 'c']` untuk mencegah batas maksimal 6 koneksi simultan per domain di browser mobile.
-* **Ketahanan Renderer WebView Android (`onRenderProcessGone`):**
-  * Pada Android 8.0+, OS dapat menghentikan (*kill*) proses render WebView di background (`code -1`) untuk menghemat RAM saat pengguna berpindah tab.
-  * `LeafletMapView.android.kt` mengimplementasikan `onRenderProcessGone` yang secara otomatis membersihkan instance lama dan memicu *re-instantiation* WebView baru yang segar melalui `key(webViewRecreateKey)`.
-  * Blok `onRelease` pada `AndroidView` memastikan pembersihan memori (`stopLoading()`, `destroy()`) dilakukan seketika saat composable didispose.
-* **Pencegahan Error DNS:** Request `/favicon.ico` di-intercept pada `shouldInterceptRequest` dengan byte kosong untuk mencegah net error `ERR_NAME_NOT_RESOLVED`.
-* **Dukungan Offline Peta (`StoryRepository`):**
-  * Jika pengambilan cerita berlokasi (`location = 1`) mengalami kegagalan jaringan atau offline, repository otomatis beralih ke cache Room SQLite lokal menyaring cerita yang memiliki koordinat (`lat != null && lon != null`).
-* **Komponen Bersama Lintas Platform:**
-  * **Android:** Dirender via `WebView` dengan antarmuka JavaScript `AndroidBridge`.
-  * **iOS:** Dirender via `WKWebView` dengan protokol `WKScriptMessageHandler`.
-
----
-
-## 💉 Deep Dive: Dependency Injection (Koin Multiplatform)
-
-Proyek ini mengandalkan **Koin Multiplatform** sebagai *Inversion of Control (IoC) Container* untuk menyatukan seluruh dependensi antar lapisan aplikasi secara fleksibel (*loose coupling*):
-
+# Menjalankan pengujian debug unit test secara spesifik
+./gradlew :shared:testDebugUnitTest
 ```
-┌─────────────────────────────────────────────────────────────┐
-│                 KOIN CONTAINER (AppModule)                  │
-│                                                             │
-│   [Engine] + [TokenStorage] ──► [HttpClient]                │
-│                                      │                      │
-│                                      ▼                      │
-│                             [StoryApiService]               │
-│                                      │                      │
-│   [Database] ──► [DAOs] ─────────────┼────────┐             │
-│                                      ▼        ▼             │
-│                             [StoryRepository] │             │
-│                                      │        │             │
-│                                      ▼        ▼             │
-│                               [HomeViewModel] [ProfileVM]   │
-└──────────────────────────────────────┬──────────────────────┘
-                                       │ inject via koinViewModel()
-                                       ▼
-                             ┌───────────────────┐
-                             │    Composable UI  │
-                             └───────────────────┘
-```
-
-### Mengapa Koin di Kotlin Multiplatform?
-1. **100% Kotlin Multiplatform Native:** Tidak membutuhkan Java Annotation Processor (seperti Hilt/Dagger yang hanya berjalan di Android) sehingga kompatibel 100% di Android dan iOS.
-2. **Kompilasi Cepat:** Murni menggunakan Kotlin DSL tanpa overhead *code generation* (KSP/kapt).
-3. **Lifecycle-Aware di Compose:** Menggunakan `koinViewModel()` pada Composable yang terikat langsung ke `ViewModelStoreOwner`, memastikan data pencarian dan feed tidak musnah saat terjadi rotasi layar (*configuration change*).
-
-### Konfigurasi Terpusat (`AppModule.kt`):
-* **`single { ... }` (Singleton Pattern):** Digunakan untuk objek yang hanya dibuat satu kali seumur hidup aplikasi:
-  * `TokenStorage`, `AppDatabase`, dan seluruh DAO (`StoryDao`, `BookmarkDao`, `OfflineDraftDao`).
-  * `HttpClientEngine`, `HttpClient`, `StoryApiService`, dan `GeocodingService`.
-  * Seluruh Repository: `StoryRepository`, `AuthRepository`, `LocationRepository`, `ThemeRepository`.
-* **`viewModelOf(::XViewModel)` (ViewModel DSL):** Resolusi dependensi otomatis untuk constructor ViewModel tanpa perlu deklarasi manual berulang.
-* **Inisialisasi Root (`App.kt`):**
-  ```kotlin
-  @Composable
-  fun App() {
-      KoinApplication(koinConfiguration {
-          modules(appModule)
-      }) {
-          AppContent()
-      }
-  }
-  ```
 
 ---
 
@@ -494,75 +378,6 @@ STORY_API_BASE_URL=https://story-api.dicoding.dev/v1/
 
 ---
 
-## 🧩 Pola State UI Modern (Idle, Loading, Success, Error, Empty)
-
-Aplikasi menerapkan pola State UI terstandarisasi yang membedakan penanganan antara **Layar Berbasis Aksi (Form/Action)** dan **Layar Berbasis Feed/Koleksi**:
-
-### 1. Layar Berbasis Aksi (`Login`, `Register`, `AddStory`)
-Menggunakan `sealed interface` terpisah untuk status submisi (`submitState`) agar status tidak ambigu (*impossible states are unrepresentable*):
-* `Idle`: Kondisi awal form sebelum pengguna menekan tombol aksi.
-* `Loading`: Sedang mengirim data ke server atau memproses kompresi gambar.
-* `Success`: Aksi berhasil, memicu efek samping navigasi atau snackbar di Compose.
-* `Error(val message: String)`: Gagal dengan pesan error yang deskriptif.
-* `OfflineSaved(val message: String)`: Khusus unggah cerita saat tidak ada internet; otomatis beralih ke antrean Room SQLite (*Outbox*).
-
-### 2. Layar Berbasis Feed & Koleksi (`Home`, `SavedStories`, `Detail`)
-Menggunakan `data class` komprehensif dengan *computed properties* reaktif:
-* `isInitialLoading`: `true` saat pertama kali memuat dan belum ada cache di layar (menampilkan skeleton shimmer).
-* `isRefreshing`: `true` saat *pull-to-refresh* atau sinkronisasi background (data feed tetap terlihat, hanya menampilkan progress bar tipis di atas).
-* `isEmpty`: `true` saat data benar-benar kosong dan bukan sedang loading/error.
-* `isSearchResultEmpty`: `true` saat filter pencarian tidak menghasilkan item yang cocok.
-* `emptyMessage`: Pesan kontekstual dinamis sesuai filter yang sedang aktif (Pencarian, Bookmark, atau Lokasi).
-
----
-
-## 🧪 Pengujian & Piramida Testing (Unit, Integration & UI Testing)
-
-Proyek Story KMP dilengkapi **81 Pengujian Otomatis (100% Pass dalam ~4.3 detik)** yang mencakup seluruh tingkatan piramida pengujian modern:
-
-### 1. 🔬 Unit Testing (56 Pengujian)
-Pengujian logika bisnis, Unidirectional Data Flow (UDF), dan transisi *UI State* di `shared/src/commonTest` menggunakan `kotlinx-coroutines-test` dan `kotlin.test`:
-* **`LoginViewModelTest` (9 pengujian):** State awal, validasi input email & password minimal 8 karakter, alur auth sukses, penanganan error API, dan pembersihan pesan kesalahan.
-* **`RegisterViewModelTest` (6 pengujian):** Validasi field pendaftaran, alur sukses pembuatan akun, dan pencegahan duplikasi email.
-* **`HomeViewModelTest` (8 pengujian):** Pemuatan instan dari Room SQLite (*offline-first*), transisi `Content`, `Empty`, `InitialLoading`, `Refreshing`, filter pencarian, filter lokasi, filter bookmark, dan alur keluar akun.
-* **`AddStoryViewModelTest` (8 pengujian):** Validasi gambar wajib $\le$ 1 MB, alur unggah online, *auto-fallback* ke antrean draft SQLite saat offline, dan pemilihan koordinat lokasi.
-* **`DetailViewModelTest` (4 pengujian):** Pemuatan detail cerita, reverse-geocoding koordinat GPS, dan toggle bookmark favorit.
-* **`SavedStoriesViewModelTest` (4 pengujian):** Observasi reaktif cerita tersimpan, antrean outbox, penghapusan draft offline, dan pemicuan sinkronisasi massal (*batch sync*).
-* **`StoryMapViewModelTest` (4 pengujian):** Filter cerita berkoordinat, pemilihan marker peta aktif, dan state loading/error.
-* **`ProfileViewModelTest` (5 pengujian):** Sesi user, info akun aktif, dan alur logout.
-* **`SharedCommonTest` (8 pengujian):** Verifikasi data model `Story` & `OfflineStoryDraft`, formatter tanggal ISO-8601, Leaflet HTML template, Theme repository, dan validasi email/password.
-
-### 2. 🌐 Integration Testing (6 Pengujian)
-Pengujian integrasi lapisan jaringan dan serialisasi data di `shared/src/commonTest/kotlin/com/learn/story/data/remote/StoryApiServiceIntegrationTest.kt` menggunakan Ktor `MockEngine`:
-* **Autentikasi Login:** Verifikasi deserialisasi respons JSON JWT token (`loginResult.token`, `userId`, `name`).
-* **Penanganan HTTP 401 Unauthorized:** Pengujian lemparan `ClientRequestException` dan penanganan status respons non-200.
-* **Pendaftaran Akun:** Verifikasi penulisan payload JSON body permintaan registrasi.
-* **Pagination & Query Parameters:** Verifikasi pembentukan URL dengan parameter `page`, `size`, dan `location`.
-* **Detail Cerita:** Pengujian deserialisasi objek nested `story` dari response API.
-* **Resiliensi Jaringan:** Pengujian ketahanan saat terjadi `ConnectTimeoutException` pada koneksi server.
-
-### 3. 🎨 UI & Component Testing (19 Pengujian)
-Pengujian tampilan deklaratif dan interaktivitas antarmuka di `shared/src/androidUnitTest/kotlin/com/learn/story/ui/` menggunakan **Compose Multiplatform UI Test (`androidx.compose.ui.test.v2.runComposeUiTest`)** dan Robolectric:
-* **`AppButtonUiTest` (3 pengujian):** Render teks tombol, responsivitas klik saat aktif, pencegahan klik saat dinonaktifkan (`enabled = false`), dan tampilan spinner `CircularProgressIndicator` saat loading.
-* **`AppTextFieldUiTest` (3 pengujian):** Render label, pengetikan masukan teks (*typing text*), penayangan pesan validasi error, dan toggle tombol Show/Hide visibilitas password.
-* **`ErrorAndEmptyStateUiTest` (2 pengujian):** Penayangan pesan kesalahan dan tombol "Coba Lagi" (`onRetry`), serta tampilan status kosong dan tombol "Muat Ulang" (`onRefresh`).
-* **`StoryCardUiTest` (3 pengujian):** Render nama pembuat, tanggal terformat, deskripsi cerita, badge lokasi GPS, dan interaktivitas ikon bookmark (tambah/hapus bookmark).
-* **`LoginScreenUiTest` (4 pengujian):** Render elemen layar masuk, input formulir dan klik "Masuk", penampilan pesan error validasi, dan navigasi ke registrasi.
-* **`RegisterScreenUiTest` (4 pengujian):** Render seluruh formulir registrasi, input nama, email, password, klik tombol "Daftar", penayangan error validasi, dan navigasi kembali ke login.
-
----
-
-### Menjalankan Seluruh Pengujian:
-```bash
-# Menjalankan seluruh pengujian (Unit + Integration + UI Test)
-./gradlew test
-
-# Menjalankan pengujian debug unit test secara spesifik
-./gradlew :shared:testDebugUnitTest
-```
-
----
-
 ## 💻 Perintah Gradle yang Sering Digunakan
 
 | Tugas | Perintah |
@@ -576,41 +391,6 @@ Pengujian tampilan deklaratif dan interaktivitas antarmuka di `shared/src/androi
 | **Jalankan Unit Test Android** | `./gradlew :shared:testDebugUnitTest` |
 | **Jalankan Unit Test iOS Simulator** | `./gradlew :shared:iosSimulatorArm64Test` |
 | **Bersihkan Seluruh Build Cache** | `./gradlew clean` |
-
----
-
-## ❓ Tanya Jawab & Pemecahan Masalah (FAQ)
-
-### 1. `Unresolved reference: BuildKonfig` saat pertama kali clone?
-* **Penyebab:** Objek `BuildKonfig` di-generate secara otomatis saat proses build dan tidak disimpan di git.
-* **Solusi:** Pastikan Anda telah membuat `local.properties` (lihat langkah 2) lalu jalankan perintah:
-  ```bash
-  ./gradlew :shared:generateBuildKonfig
-  ```
-
-### 2. Peringatan Gradle Daemon out of JVM Metaspace?
-* **Penyebab:** Kompilasi Kotlin Multiplatform dengan KSP dan Compose membutuhkan kapasitas memory metaspace yang cukup.
-* **Solusi:** Tambahkan konfigurasi berikut pada berkas `gradle.properties`:
-  ```properties
-  org.gradle.jvmargs=-Xmx6144m -XX:MaxMetaspaceSize=2048m
-  ```
-
-### 3. Izin Kamera atau Galeri tidak muncul di iOS?
-* **Penyebab:** Deskripsi izin privasi Apple belum terbaca di `Info.plist`.
-* **Solusi:** Pastikan kunci `NSCameraUsageDescription` dan `NSPhotoLibraryUsageDescription` sudah terisi di [iosApp/iosApp/Info.plist](file:///Users/mac/StudioProjects/Story/iosApp/iosApp/Info.plist).
-
-### 4. Mengapa peta tidak membutuhkan Google Maps API Key?
-* Aplikasi menggunakan pustaka terbuka **Leaflet JS** dan ubin peta **OpenStreetMap**, sehingga dapat langsung digunakan tanpa batasan kuota berbayar atau keharusan memasukkan billing kartu kredit.
-
-### 5. Mengapa "Tambah Story" berada di tengah navigasi bawah dan bukan tab biasa?
-* Mengikuti standar **Material 3** dan desain aplikasi sosial modern (Instagram/TikTok), pembuatan cerita adalah **Task-Oriented Modal Action** (buka kamera $\rightarrow$ isi caption $\rightarrow$ unggah $\rightarrow$ selesai), bukan **Top-Level Destination** yang menyimpan stack navigasi persistent. Tombol tengah didesain berupa **Elevated Center Action Button** beraksen primer dengan ikon `+` yang secara visual jelas memicu aksi kreasi, sementara 4 tab lainnya (`HOME`, `MAP`, `SAVED`, `PROFILE`) adalah tab penjelajahan sejati.
-
-### 6. Mengapa layar peta sempat blank/abu-abu saat berpindah tab di emulator Android?
-* **Penyebab:** Pada Android 8.0+, OS dapat menghentikan proses render WebView di background (`code -1`) untuk menghemat memori. Jika tidak ditangani, instance WebView lama menjadi mati permanen (*dead canvas*).
-* **Solusi:** Telah ditangani secara otomatis melalui `onRenderProcessGone` di `LeafletMapView.android.kt` yang mendestroy instance lama dan memicu instansiasi WebView baru via Compose `key`, didukung pembersihan memori otomatis pada blok `onRelease`.
-
-### 7. Bagaimana dependency injection (Koin) mempertahankan data saat rotasi layar?
-* Dengan menggunakan fungsi `koinViewModel()` pada Composable screen, ViewModel yang di-resolve terikat langsung pada `ViewModelStoreOwner` siklus hidup Compose/Android. Saat orientasi layar berganti atau tema berpindah, ViewModel yang sama digunakan kembali sehingga data feed dan pencarian tidak di-reload ulang.
 
 ---
 
