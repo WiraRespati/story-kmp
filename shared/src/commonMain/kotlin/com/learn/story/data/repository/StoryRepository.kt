@@ -54,20 +54,22 @@ class StoryRepository(
                 emit(ApiResult.Success(response.listStory))
             } else {
                 val errorMsg = if (response.message.trim().isNotEmpty()) response.message else "Failed to fetch stories"
-                if (page == 1 && location == 0) {
+                if (page == 1) {
                     val cached = storyDao.getStories().map { it.toDomain() }
-                    if (cached.isNotEmpty()) {
-                        emit(ApiResult.Success(cached))
+                    val filtered = if (location == 1) cached.filter { it.lat != null && it.lon != null } else cached
+                    if (filtered.isNotEmpty()) {
+                        emit(ApiResult.Success(filtered))
                         return@flow
                     }
                 }
                 emit(ApiResult.Error(errorMsg))
             }
         } catch (e: Exception) {
-            if (page == 1 && location == 0) {
+            if (page == 1) {
                 val cached = storyDao.getStories().map { it.toDomain() }
-                if (cached.isNotEmpty()) {
-                    emit(ApiResult.Success(cached))
+                val filtered = if (location == 1) cached.filter { it.lat != null && it.lon != null } else cached
+                if (filtered.isNotEmpty()) {
+                    emit(ApiResult.Success(filtered))
                     return@flow
                 }
             }

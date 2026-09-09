@@ -16,11 +16,12 @@ Aplikasi **Story Sharing** modern kelas produksi berbasis **Kotlin Multiplatform
 ## 📌 Daftar Isi
 - [✨ Fitur Unggulan](#-fitur-unggulan)
 - [🛠️ Tech Stack & Versi Dependensi](#️-tech-stack--versi-dependensi)
-- [🏗️ Arsitektur Aplikasi & Alur Data](#️-arsitektur-aplikasi--alur-data)
+- [🏗️ Arsitektur Aplikasi & Alur Data (MVVM + Repository)](#️-arsitektur-aplikasi--alur-data-mvvm--repository)
 - [📸 Deep Dive: Pipeline Kompresi Gambar (< 1 MB)](#-deep-dive-pipeline-kompresi-gambar--1-mb)
 - [💾 Deep Dive: Mode Offline & Outbox Queue (Room KMP)](#-deep-dive-mode-offline--outbox-queue-room-kmp)
 - [🛡️ Deep Dive: Keamanan & Hiding Base URL (BuildKonfig)](#️-deep-dive-keamanan--hiding-base-url-buildkonfig)
-- [🗺️ Deep Dive: Peta Interaktif (Leaflet JS + OpenStreetMap)](#️-deep-dive-peta-interaktif-leaflet-js--openstreetmap)
+- [🗺️ Deep Dive: Peta Interaktif & Ketahanan WebView (Leaflet JS + OSM)](#️-deep-dive-peta-interaktif--ketahanan-webview-leaflet-js--osm)
+- [💉 Deep Dive: Dependency Injection (Koin Multiplatform)](#-deep-dive-dependency-injection-koin-multiplatform)
 - [📂 Struktur Direktori Proyek](#-struktur-direktori-proyek)
 - [🚀 Setup & Panduan Menjalankan Project](#-setup--panduan-menjalankan-project)
 - [🧪 Pengujian Unit & Verifikasi (Testing)](#-pengujian-unit--verifikasi-testing)
@@ -114,45 +115,59 @@ Aplikasi **Story Sharing** modern kelas produksi berbasis **Kotlin Multiplatform
 
 ---
 
-## 🏗️ Arsitektur Aplikasi & Alur Data
+## 🏗️ Arsitektur Aplikasi & Alur Data (MVVM + Repository)
 
-Proyek ini dirancang mengikuti panduan resmi arsitektur modern Android & Kotlin Multiplatform menggunakan **Clean Architecture** dan **MVVM (Model-View-ViewModel)** dengan **Unidirectional Data Flow (UDF)**:
+Proyek ini secara konsisten menerapkan arsitektur standar **MVVM (Model-View-ViewModel) + Repository Pattern** yang terarah dan modular, mematuhi prinsip **Clean Code** serta **Unidirectional Data Flow (UDF)**:
 
 ```
-┌─────────────────────────────────────────────────────────────────────────┐
-│                        UI Layer (Compose Multiplatform)                 │
-│  Screens: LoginScreen, RegisterScreen, HomeScreen, DetailScreen,        │
-│           AddStoryScreen, MapScreen, SavedStoriesScreen, ProfileScreen  │
-└────────────────────────────────────▲────────────────────────────────────┘
-                                     │ (StateFlow / UI Events)
-┌────────────────────────────────────▼────────────────────────────────────┐
-│                             ViewModel Layer                             │
-│   AuthViewModel, HomeViewModel, DetailViewModel, AddStoryViewModel,    │
-│                 MapViewModel, SavedStoriesViewModel                    │
-└────────────────────────────────────▲────────────────────────────────────┘
-                                     │ (Flow<ApiResult<T>>)
-┌────────────────────────────────────▼────────────────────────────────────┐
-│                            Repository Layer                             │
-│       StoryRepository, AuthRepository, ThemeRepository, GeocodingRepo   │
-└────────────────────────────────────▲────────────────────────────────────┘
-                      ┌──────────────┴──────────────┐
-                      ▼                             ▼
-┌────────────────────────────────────────┐ ┌──────────────────────────────┐
-│           Remote Data Source           │ │    Local Database Source     │
-│   • Ktor 3 StoryApiService             │ │   • AndroidX Room AppDatabase│
-│   • BuildKonfig.BASE_URL (Encrypted)   │ │     - StoryDao (Feed Cache)  │
-│   • OpenStreetMap Nominatim Geocoding  │ │     - BookmarkDao (Favorites)│
-│                                        │ │     - OfflineDraftDao(Outbox)│
-│                                        │ │   • Multiplatform Settings   │
-│                                        │ │     - TokenStorage (JWT)     │
-│                                        │ │     - Theme & Font Preference│
-└────────────────────────────────────────┘ └──────────────────────────────┘
+┌─────────────────────────────────────────────────────────────────────────────────┐
+│                        UI Layer (Compose Multiplatform)                         │
+│   • StoryListScreen   • StoryMapScreen   • SavedStoriesScreen   • ProfileScreen │
+│   • DetailStoryScreen • AddStoryScreen   • LoginScreen          • RegisterScreen│
+│   • Navigation: MainScreen (4 Top-Level Tabs + Center Action Button)            │
+└────────────────────────────────────────▲────────────────────────────────────────┘
+                                         │ StateFlow (collectAsStateWithLifecycle)
+                                         │ User Events (Callbacks)
+┌────────────────────────────────────────▼────────────────────────────────────────┐
+│                                 ViewModel Layer                                 │
+│   • HomeViewModel      • StoryMapViewModel     • SavedStoriesViewModel          │
+│   • DetailViewModel    • AddStoryViewModel     • ProfileViewModel               │
+│   • LoginViewModel     • RegisterViewModel                                      │
+└────────────────────────────────────────▲────────────────────────────────────────┘
+                                         │ Flow<ApiResult<T>> / Coroutines
+┌────────────────────────────────────────▼────────────────────────────────────────┐
+│                                Repository Layer                                 │
+│   • StoryRepository    • AuthRepository        • LocationRepository             │
+│   • ThemeRepository                                                             │
+└────────────────────────────────────────▲────────────────────────────────────────┘
+                       ┌─────────────────┴─────────────────┐
+                       ▼                                   ▼
+┌─────────────────────────────────────────────┐ ┌─────────────────────────────────┐
+│             Remote Data Source              │ │      Local Database Source      │
+│   • StoryApiService (Ktor 3 + safeRequest)  │ │   • AndroidX Room AppDatabase   │
+│   • GeocodingService (OSM Nominatim)        │ │     - StoryDao (Feed Cache)     │
+│   • BuildKonfig.BASE_URL (Injected)         │ │     - BookmarkDao (Favorites)   │
+│                                             │ │     - OfflineDraftDao (Outbox)  │
+│                                             │ │   • Multiplatform Settings      │
+│                                             │ │     - TokenStorage (JWT Bearer) │
+│                                             │ │     - Theme & Font Preference   │
+└─────────────────────────────────────────────┘ └─────────────────────────────────┘
 ```
 
-### Prinsip Alur Data Satu Arah (UDF):
-1. **User Action:** Interaksi pengguna pada layar UI (seperti menekan tombol unggah atau mengetik pencarian) memicu event ke `ViewModel`.
-2. **State Management:** `ViewModel` memanggil `Repository`, mengelola `StateFlow`, dan mengabarkan state UI (`Loading`, `Success`, `Error`).
-3. **Reactive UI:** Komponen Composable mengamati `StateFlow` dan melakukan render ulang secara otomatis sesuai state terbaru.
+### Prinsip Alur Data Satu Arah (Unidirectional Data Flow / UDF):
+1. **Events Flow Up (Aksi Pengguna):** Pengguna berinteraksi dengan Composable UI (klik tombol, pull-to-refresh, input text). UI meneruskan *event* ke ViewModel tanpa logika bisnis.
+2. **State Flows Down (Data Mengalir ke UI):** ViewModel memproses event melalui Repository, memperbarui `StateFlow` privat (`_uiState`), dan mengekspos `StateFlow` *read-only* ke UI.
+3. **Lifecycle-Aware State Collection:** UI mengamati state menggunakan `collectAsStateWithLifecycle()`. Saat layar berada di background, pengumpulan data Flow otomatis dijeda (*paused*) untuk menghemat baterai dan CPU.
+4. **Navigasi Berbasis State:** ViewModel tidak menyimpan referensi callback navigasi UI. Navigasi dipicu secara independen di Composable menggunakan `LaunchedEffect` yang bereaksi terhadap perubahan state (misal `isSuccess`, `isLoggedOut`).
+
+### Desain Navigasi Bawah: 4 Destinasi Sejati + Elevated Center Action Button
+Mengikuti standar mobile modern (**Android Material 3** & **iOS Human Interface Guidelines** seperti Instagram, TikTok, dan YouTube):
+* **`MainTab` (Destinasi Sejati):** Berisi 4 tab yang mempertahankan state dan stack masing-masing:
+  1. `HOME` (Beranda Feed)
+  2. `MAP` (Peta Cerita)
+  3. `SAVED` (Tersimpan & Outbox)
+  4. `PROFILE` (Profil Pengguna & Pengaturan)
+* **Center Action Button (`+` Tambah Story):** Berbentuk tombol lingkaran melayang (*elevated circle*) dengan warna primer di tengah bar navigasi. Didesain secara khusus sebagai **Task-Oriented Modal Action** (bukan tab biasa), memberi kejelasan visual (*affordance*) bahwa tombol ini memicu alur kreasi cerita layar penuh.
 
 ---
 
@@ -264,17 +279,75 @@ Untuk mematuhi standar keamanan aplikasi modern dan mencegah kebocoran alamat AP
 
 ---
 
-## 🗺️ Deep Dive: Peta Interaktif (Leaflet JS + OpenStreetMap)
+## 🗺️ Deep Dive: Peta Interaktif & Ketahanan WebView (Leaflet JS + OSM)
 
 Sebagai alternatif modern dari Google Maps SDK yang membutuhkan kartu kredit dan konfigurasi API key kompleks:
-* **Ekosistem Terbuka:** Menggunakan **Leaflet JS 1.9.4** dan ubin peta **OpenStreetMap Tile Layer**.
-* **Komponen Bersama `LeafletMapView`:**
-  * Di Android: Dirender menggunakan `android.webkit.WebView` dengan JavaScript Interface `AndroidBridge`.
-  * Di iOS: Dirender menggunakan `WebKit.WKWebView` dengan `WKScriptMessageHandler`.
-* **Dukungan Fitur Peta:**
-  * Penandaan multi-marker untuk semua cerita yang memiliki koordinat GPS.
-  * Tampilan popup info nama pengunggah dan cuplikan cerita saat marker disentuh.
-  * Pemilihan lokasi interaktif: Sentuhan pada peta mengirimkan koordinat lintang & bujur kembali ke antarmuka Compose.
+* **Ekosistem Terbuka & Zero API Key:** Menggunakan **Leaflet JS 1.9.4** dan ubin peta **OpenStreetMap Tile Layer** yang sepenuhnya gratis tanpa kuota berbayar.
+* **Performa Tinggi & Anti-Bottleneck:**
+  * **Global Cloudflare CDN:** Script dan stylesheet Leaflet dimuat melalui `cdnjs.cloudflare.com` yang terdistribusi secara global dengan uptime 100%.
+  * **Tile Subdomain Round-Robin:** URL tile menggunakan pola `https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png` dengan subdomain `['a', 'b', 'c']` untuk mencegah batas maksimal 6 koneksi simultan per domain di browser mobile.
+* **Ketahanan Renderer WebView Android (`onRenderProcessGone`):**
+  * Pada Android 8.0+, OS dapat menghentikan (*kill*) proses render WebView di background (`code -1`) untuk menghemat RAM saat pengguna berpindah tab.
+  * `LeafletMapView.android.kt` mengimplementasikan `onRenderProcessGone` yang secara otomatis membersihkan instance lama dan memicu *re-instantiation* WebView baru yang segar melalui `key(webViewRecreateKey)`.
+  * Blok `onRelease` pada `AndroidView` memastikan pembersihan memori (`stopLoading()`, `destroy()`) dilakukan seketika saat composable didispose.
+* **Pencegahan Error DNS:** Request `/favicon.ico` di-intercept pada `shouldInterceptRequest` dengan byte kosong untuk mencegah net error `ERR_NAME_NOT_RESOLVED`.
+* **Dukungan Offline Peta (`StoryRepository`):**
+  * Jika pengambilan cerita berlokasi (`location = 1`) mengalami kegagalan jaringan atau offline, repository otomatis beralih ke cache Room SQLite lokal menyaring cerita yang memiliki koordinat (`lat != null && lon != null`).
+* **Komponen Bersama Lintas Platform:**
+  * **Android:** Dirender via `WebView` dengan antarmuka JavaScript `AndroidBridge`.
+  * **iOS:** Dirender via `WKWebView` dengan protokol `WKScriptMessageHandler`.
+
+---
+
+## 💉 Deep Dive: Dependency Injection (Koin Multiplatform)
+
+Proyek ini mengandalkan **Koin Multiplatform** sebagai *Inversion of Control (IoC) Container* untuk menyatukan seluruh dependensi antar lapisan aplikasi secara fleksibel (*loose coupling*):
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│                 KOIN CONTAINER (AppModule)                  │
+│                                                             │
+│   [Engine] + [TokenStorage] ──► [HttpClient]                │
+│                                      │                      │
+│                                      ▼                      │
+│                             [StoryApiService]               │
+│                                      │                      │
+│   [Database] ──► [DAOs] ─────────────┼────────┐             │
+│                                      ▼        ▼             │
+│                             [StoryRepository] │             │
+│                                      │        │             │
+│                                      ▼        ▼             │
+│                               [HomeViewModel] [ProfileVM]   │
+└──────────────────────────────────────┬──────────────────────┘
+                                       │ inject via koinViewModel()
+                                       ▼
+                             ┌───────────────────┐
+                             │    Composable UI  │
+                             └───────────────────┘
+```
+
+### Mengapa Koin di Kotlin Multiplatform?
+1. **100% Kotlin Multiplatform Native:** Tidak membutuhkan Java Annotation Processor (seperti Hilt/Dagger yang hanya berjalan di Android) sehingga kompatibel 100% di Android dan iOS.
+2. **Kompilasi Cepat:** Murni menggunakan Kotlin DSL tanpa overhead *code generation* (KSP/kapt).
+3. **Lifecycle-Aware di Compose:** Menggunakan `koinViewModel()` pada Composable yang terikat langsung ke `ViewModelStoreOwner`, memastikan data pencarian dan feed tidak musnah saat terjadi rotasi layar (*configuration change*).
+
+### Konfigurasi Terpusat (`AppModule.kt`):
+* **`single { ... }` (Singleton Pattern):** Digunakan untuk objek yang hanya dibuat satu kali seumur hidup aplikasi:
+  * `TokenStorage`, `AppDatabase`, dan seluruh DAO (`StoryDao`, `BookmarkDao`, `OfflineDraftDao`).
+  * `HttpClientEngine`, `HttpClient`, `StoryApiService`, dan `GeocodingService`.
+  * Seluruh Repository: `StoryRepository`, `AuthRepository`, `LocationRepository`, `ThemeRepository`.
+* **`viewModelOf(::XViewModel)` (ViewModel DSL):** Resolusi dependensi otomatis untuk constructor ViewModel tanpa perlu deklarasi manual berulang.
+* **Inisialisasi Root (`App.kt`):**
+  ```kotlin
+  @Composable
+  fun App() {
+      KoinApplication(koinConfiguration {
+          modules(appModule)
+      }) {
+          AppContent()
+      }
+  }
+  ```
 
 ---
 
@@ -304,7 +377,7 @@ Story/
 │       ├── commonMain/                       # 100% Kode Bersama Cross-Platform
 │       │   ├── composeResources/             # Font Poppins, Gambar Vektor, String XML
 │       │   └── kotlin/com/learn/story/
-│       │       ├── App.kt                    # Root Composable & Inisialisasi Tema
+│       │       ├── App.kt                    # Root Composable & Koin Inisialisasi
 │       │       ├── data/
 │       │       │   ├── local/                # Database AndroidX Room KMP
 │       │       │   │   ├── AppDatabase.kt    # Definisi Database & Expect Constructor
@@ -313,26 +386,36 @@ Story/
 │       │       │   │   └── entity/           # StoryEntity, BookmarkEntity, OfflineDraftEntity
 │       │       │   ├── model/                # Story, User, OfflineStoryDraft, ApiResult
 │       │       │   ├── network/              # HttpClientFactory (Ktor 3 + BuildKonfig)
-│       │       │   ├── remote/               # StoryApiService, GeocodingService
-│       │       │   ├── repository/           # StoryRepository, AuthRepository, ThemeRepository
+│       │       │   ├── remote/               # StoryApiService (safeRequest), GeocodingService
+│       │       │   ├── repository/           # StoryRepository, AuthRepository, LocationRepository, ThemeRepository
 │       │       │   └── storage/              # TokenStorage (Multiplatform Settings)
 │       │       ├── di/
-│       │       │   └── AppModule.kt          # Koin DI Module (Network, Database, Repos, VMs)
-│       │       └── ui/
-│       │           ├── components/           # Custom Buttons, TextFields, Cards, MapView
-│       │           │   └── map/              # LeafletMapView, Marker Models, HTML Generator
-│       │           ├── navigation/           # Navigation Compose NavHost & AppScreen Sealed Class
-│       │           ├── picker/               # Expect functions for Camera & Gallery Pickers
-│       │           ├── screens/              # Login, Register, Home, Detail, Add, Map, Saved
-│       │           └── theme/                # Material 3 Colors, ThemeMode, Poppins Typography
+│       │       │   └── AppModule.kt          # Koin DI Module (Network, Database, Repos, ViewModels)
+│       │       ├── ui/
+│       │       │   ├── components/           # StoryCard, ShimmerLoading, AppButton, MapView
+│       │       │   │   └── map/              # LeafletMapView, Marker Models, HTML Generator
+│       │       │   ├── navigation/           # Navigation Compose NavHost & Routes
+│       │       │   ├── picker/               # Expect functions for Camera & Gallery Pickers
+│       │       │   ├── screens/              # Modul Layar & ViewModel Terpisah
+│       │       │   │   ├── main/             # MainScreen (4 MainTabs + Center Action Button)
+│       │       │   │   ├── home/             # StoryListScreen, HomeViewModel, HomeUiState
+│       │       │   │   ├── map/              # StoryMapScreen, StoryMapViewModel
+│       │       │   │   ├── saved/            # SavedStoriesScreen, SavedStoriesViewModel
+│       │       │   │   ├── profile/          # ProfileScreen, ProfileViewModel
+│       │       │   │   ├── detail/           # DetailStoryScreen, DetailViewModel
+│       │       │   │   ├── add/              # AddStoryScreen, AddStoryViewModel, SelectLocationScreen
+│       │       │   │   └── auth/             # LoginScreen/VM, RegisterScreen/VM
+│       │       │   └── theme/                # Material 3 Colors, ThemeMode, Poppins Typography
+│       │       └── util/                     # TimeUtil, AuthValidator, AppConstants
 │       │
 │       ├── androidMain/                      # Implementasi Spesifik Android
 │       │   ├── AndroidManifest.xml           # ContextProvider Manifest
 │       │   └── kotlin/com/learn/story/
 │       │       ├── data/local/               # DatabaseBuilder.android.kt (Context provider)
 │       │       ├── data/network/             # OkHttp Engine Factory
-│       │       ├── ui/components/map/        # LeafletMapView.android.kt (Android WebView)
-│       │       └── ui/picker/                # ImagePicker.android.kt (EXIF & Bitmap Compress)
+│       │       ├── ui/components/map/        # LeafletMapView.android.kt (WebView + Crash Recovery)
+│       │       ├── ui/picker/                # ImagePicker.android.kt (EXIF & Bitmap Compress)
+│       │       └── util/                     # TimeUtil.android.kt (System.currentTimeMillis)
 │       │
 │       ├── iosMain/                          # Implementasi Spesifik iOS
 │       │   └── kotlin/com/learn/story/
@@ -340,7 +423,8 @@ Story/
 │       │       ├── data/local/               # DatabaseBuilder.ios.kt (NSDocumentDirectory)
 │       │       ├── data/network/             # Darwin Engine Factory
 │       │       ├── ui/components/map/        # LeafletMapView.ios.kt (WKWebView & ScriptBridge)
-│       │       └── ui/picker/                # ImagePicker.ios.kt (CoreGraphics & JPEG Compress)
+│       │       ├── ui/picker/                # ImagePicker.ios.kt (CoreGraphics & JPEG Compress)
+│       │       └── util/                     # TimeUtil.ios.kt (gettimeofday epoch ms)
 │       │
 │       └── commonTest/                       # Unit Test Cross-Platform
 │           └── kotlin/com/learn/story/
@@ -470,6 +554,16 @@ Aplikasi dilengkapi dengan rangkaian pengujian unit cross-platform di `shared/sr
 
 ### 4. Mengapa peta tidak membutuhkan Google Maps API Key?
 * Aplikasi menggunakan pustaka terbuka **Leaflet JS** dan ubin peta **OpenStreetMap**, sehingga dapat langsung digunakan tanpa batasan kuota berbayar atau keharusan memasukkan billing kartu kredit.
+
+### 5. Mengapa "Tambah Story" berada di tengah navigasi bawah dan bukan tab biasa?
+* Mengikuti standar **Material 3** dan desain aplikasi sosial modern (Instagram/TikTok), pembuatan cerita adalah **Task-Oriented Modal Action** (buka kamera $\rightarrow$ isi caption $\rightarrow$ unggah $\rightarrow$ selesai), bukan **Top-Level Destination** yang menyimpan stack navigasi persistent. Tombol tengah didesain berupa **Elevated Center Action Button** beraksen primer dengan ikon `+` yang secara visual jelas memicu aksi kreasi, sementara 4 tab lainnya (`HOME`, `MAP`, `SAVED`, `PROFILE`) adalah tab penjelajahan sejati.
+
+### 6. Mengapa layar peta sempat blank/abu-abu saat berpindah tab di emulator Android?
+* **Penyebab:** Pada Android 8.0+, OS dapat menghentikan proses render WebView di background (`code -1`) untuk menghemat memori. Jika tidak ditangani, instance WebView lama menjadi mati permanen (*dead canvas*).
+* **Solusi:** Telah ditangani secara otomatis melalui `onRenderProcessGone` di `LeafletMapView.android.kt` yang mendestroy instance lama dan memicu instansiasi WebView baru via Compose `key`, didukung pembersihan memori otomatis pada blok `onRelease`.
+
+### 7. Bagaimana dependency injection (Koin) mempertahankan data saat rotasi layar?
+* Dengan menggunakan fungsi `koinViewModel()` pada Composable screen, ViewModel yang di-resolve terikat langsung pada `ViewModelStoreOwner` siklus hidup Compose/Android. Saat orientasi layar berganti atau tema berpindah, ViewModel yang sama digunakan kembali sehingga data feed dan pencarian tidak di-reload ulang.
 
 ---
 

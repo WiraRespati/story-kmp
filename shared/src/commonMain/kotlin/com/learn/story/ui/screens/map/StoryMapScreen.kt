@@ -135,6 +135,24 @@ fun StoryMapScreen(
                         onMarkerClick = viewModel::selectStoryById
                     )
 
+                    if (!uiState.isLoading && uiState.markers.isEmpty()) {
+                        androidx.compose.material3.Surface(
+                            shape = RoundedCornerShape(20.dp),
+                            color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.92f),
+                            shadowElevation = 4.dp,
+                            modifier = Modifier
+                                .align(Alignment.TopCenter)
+                                .padding(top = 16.dp, start = 16.dp, end = 16.dp)
+                        ) {
+                            Text(
+                                text = "Belum ada story yang menyertakan lokasi",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)
+                            )
+                        }
+                    }
+
                     // Story preview bottom card
                     AnimatedVisibility(
                         visible = uiState.selectedStory != null,
