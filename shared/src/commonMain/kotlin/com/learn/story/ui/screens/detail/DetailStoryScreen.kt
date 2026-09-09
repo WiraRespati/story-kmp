@@ -16,10 +16,16 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.filled.Bookmark
+import androidx.compose.material.icons.filled.LocationOn
+import androidx.compose.material.icons.outlined.BookmarkBorder
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
@@ -47,6 +53,8 @@ import com.learn.story.ui.components.map.MapInteractionMode
 import com.learn.story.ui.components.map.MapMarker
 import com.learn.story.ui.theme.StoryTheme
 
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
+
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun DetailStoryScreen(
@@ -55,7 +63,7 @@ fun DetailStoryScreen(
     onNavigateBack: () -> Unit,
     modifier: Modifier = Modifier
 ) {
-    val uiState by viewModel.uiState.collectAsState()
+    val uiState by viewModel.uiState.collectAsStateWithLifecycle()
 
     LaunchedEffect(storyId) {
         viewModel.loadDetail(storyId)
@@ -85,13 +93,20 @@ fun DetailStoryScreenContent(
                 title = { Text("Detail Story", fontWeight = FontWeight.Bold) },
                 navigationIcon = {
                     IconButton(onClick = onNavigateBack) {
-                        Text("⬅️", fontSize = 18.sp)
+                        Icon(
+                            imageVector = Icons.AutoMirrored.Filled.ArrowBack,
+                            contentDescription = "Kembali"
+                        )
                     }
                 },
                 actions = {
                     if (uiState.story != null) {
                         IconButton(onClick = onToggleBookmark) {
-                            Text(if (uiState.isBookmarked) "⭐" else "☆", fontSize = 20.sp)
+                            Icon(
+                                imageVector = if (uiState.isBookmarked) Icons.Filled.Bookmark else Icons.Outlined.BookmarkBorder,
+                                contentDescription = if (uiState.isBookmarked) "Hapus dari Favorit" else "Simpan ke Favorit",
+                                tint = if (uiState.isBookmarked) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant
+                            )
                         }
                     }
                 },
@@ -215,7 +230,12 @@ fun DetailStoryScreenContent(
                                 ) {
                                     Column(modifier = Modifier.padding(14.dp)) {
                                         Row(verticalAlignment = Alignment.CenterVertically) {
-                                            Text("📍", fontSize = 22.sp)
+                                            Icon(
+                                                imageVector = Icons.Default.LocationOn,
+                                                contentDescription = null,
+                                                tint = MaterialTheme.colorScheme.primary,
+                                                modifier = Modifier.size(24.dp)
+                                            )
                                             Spacer(modifier = Modifier.width(10.dp))
                                             Column {
                                                 Text(

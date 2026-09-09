@@ -36,13 +36,15 @@ import com.learn.story.ui.components.AppTextField
 import com.learn.story.ui.theme.StoryTheme
 import androidx.compose.ui.tooling.preview.Preview
 
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
+
 @Composable
 fun RegisterScreen(
     viewModel: RegisterViewModel,
     onNavigateToLogin: () -> Unit,
     modifier: Modifier = Modifier
 ) {
-    val uiState by viewModel.uiState.collectAsState()
+    val uiState by viewModel.uiState.collectAsStateWithLifecycle()
     val snackbarHostState = remember { SnackbarHostState() }
 
     LaunchedEffect(uiState.errorMessage) {
@@ -65,7 +67,7 @@ fun RegisterScreen(
         onNameChanged = viewModel::onNameChanged,
         onEmailChanged = viewModel::onEmailChanged,
         onPasswordChanged = viewModel::onPasswordChanged,
-        onRegister = { viewModel.register(onSuccess = onNavigateToLogin) },
+        onRegister = viewModel::register,
         onNavigateToLogin = onNavigateToLogin,
         snackbarHostState = snackbarHostState,
         modifier = modifier

@@ -9,6 +9,7 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -48,6 +49,7 @@ import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -61,26 +63,31 @@ import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import com.learn.story.data.repository.ThemeRepository
-import com.learn.story.ui.screens.home.HomeUiState
 import com.learn.story.ui.theme.AppFontFamily
 import com.learn.story.ui.theme.AppThemeMode
 import com.learn.story.ui.theme.resolveFontFamily
-import org.koin.compose.koinInject
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.learn.story.ui.screens.profile.ProfileViewModel
+import org.koin.compose.viewmodel.koinViewModel
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun ProfileScreen(
-    uiState: HomeUiState,
-    onRefresh: () -> Unit,
-    onSyncDrafts: () -> Unit,
     onLogout: () -> Unit,
-    themeRepository: ThemeRepository = koinInject(),
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    viewModel: ProfileViewModel = koinViewModel()
 ) {
     var showLogoutDialog by remember { mutableStateOf(false) }
-    val currentThemeMode by themeRepository.themeMode.collectAsState()
-    val currentFontFamily by themeRepository.fontFamily.collectAsState()
+    val currentThemeMode by viewModel.themeMode.collectAsStateWithLifecycle()
+    val currentFontFamily by viewModel.fontFamily.collectAsStateWithLifecycle()
+    val uiState by viewModel.uiState.collectAsStateWithLifecycle()
+    val isLoggedOut by viewModel.isLoggedOut.collectAsStateWithLifecycle()
+
+    LaunchedEffect(isLoggedOut) {
+        if (isLoggedOut) {
+            onLogout()
+        }
+    }
 
     if (showLogoutDialog) {
         AlertDialog(
@@ -91,7 +98,7 @@ fun ProfileScreen(
                 TextButton(
                     onClick = {
                         showLogoutDialog = false
-                        onLogout()
+                        viewModel.logout()
                     }
                 ) {
                     Text("Keluar", color = MaterialTheme.colorScheme.error, fontWeight = FontWeight.Bold)
@@ -114,12 +121,13 @@ fun ProfileScreen(
                 )
             )
         },
+        contentWindowInsets = WindowInsets(0, 0, 0, 0),
         modifier = modifier.fillMaxSize()
     ) { innerPadding ->
         Column(
             modifier = Modifier
                 .fillMaxSize()
-                .padding(innerPadding)
+                .padding(top = innerPadding.calculateTopPadding())
                 .verticalScroll(rememberScrollState())
                 .padding(16.dp),
             horizontalAlignment = Alignment.CenterHorizontally
@@ -146,7 +154,7 @@ fun ProfileScreen(
                         contentAlignment = Alignment.Center
                     ) {
                         Text(
-                            text = uiState.userName?.firstOrNull()?.uppercase() ?: "U",
+                            text = uiState.userName.firstOrNull()?.uppercase() ?: "U",
                             style = MaterialTheme.typography.headlineLarge,
                             color = MaterialTheme.colorScheme.onPrimaryContainer,
                             fontWeight = FontWeight.ExtraBold
@@ -156,7 +164,7 @@ fun ProfileScreen(
                     Spacer(modifier = Modifier.height(16.dp))
 
                     Text(
-                        text = uiState.userName ?: "Pengguna Story",
+                        text = uiState.userName,
                         style = MaterialTheme.typography.titleLarge,
                         fontWeight = FontWeight.Bold
                     )
@@ -198,21 +206,21 @@ fun ProfileScreen(
             ) {
                 StatCard(
                     title = "Story Feed",
-                    value = uiState.stories.size.toString(),
+                    value = uiState.feedCount.toString(),
                     icon = Icons.Default.AutoStories,
                     iconTint = MaterialTheme.colorScheme.primary,
                     modifier = Modifier.weight(1f)
                 )
                 StatCard(
                     title = "Favorit",
-                    value = uiState.bookmarkedIds.size.toString(),
+                    value = uiState.bookmarksCount.toString(),
                     icon = Icons.Default.Bookmark,
                     iconTint = Color(0xFFF59E0B),
                     modifier = Modifier.weight(1f)
                 )
                 StatCard(
                     title = "Outbox",
-                    value = uiState.offlineDrafts.size.toString(),
+                    value = uiState.draftsCount.toString(),
                     icon = Icons.Default.CloudUpload,
                     iconTint = MaterialTheme.colorScheme.secondary,
                     modifier = Modifier.weight(1f)
@@ -264,7 +272,7 @@ fun ProfileScreen(
                             FontFamilyOptionCard(
                                 family = family,
                                 isSelected = currentFontFamily == family,
-                                onClick = { themeRepository.setFontFamily(family) }
+                                onClick = { viewModel.setFontFamily(family) }
                             )
                         }
                     }
@@ -316,7 +324,7 @@ fun ProfileScreen(
                             ThemeOptionCard(
                                 mode = mode,
                                 isSelected = currentThemeMode == mode,
-                                onClick = { themeRepository.setThemeMode(mode) }
+                                onClick = { viewModel.setThemeMode(mode) }
                             )
                         }
                     }
@@ -337,15 +345,15 @@ fun ProfileScreen(
                         icon = Icons.Default.Refresh,
                         title = "Segarkan Data",
                         subtitle = "Ambil ulang cerita terbaru dari server",
-                        onClick = onRefresh
+                        onClick = viewModel::refreshData
                     )
                     HorizontalDivider(modifier = Modifier.padding(horizontal = 16.dp), color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
 
                     SettingItem(
                         icon = Icons.Default.CloudUpload,
                         title = "Sinkronisasi Draft",
-                        subtitle = "${uiState.offlineDrafts.size} draft siap diunggah",
-                        onClick = onSyncDrafts
+                        subtitle = if (uiState.isSyncing) "Sedang menyinkronkan..." else "${uiState.draftsCount} draft siap diunggah",
+                        onClick = viewModel::syncOfflineDrafts
                     )
                     HorizontalDivider(modifier = Modifier.padding(horizontal = 16.dp), color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
 

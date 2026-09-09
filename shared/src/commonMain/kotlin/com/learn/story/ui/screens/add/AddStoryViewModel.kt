@@ -4,8 +4,9 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.learn.story.data.network.ApiResult
 import com.learn.story.data.remote.GeocodingPlace
-import com.learn.story.data.remote.GeocodingService
+import com.learn.story.data.repository.LocationRepository
 import com.learn.story.data.repository.StoryRepository
+import com.learn.story.util.generateDraftId
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -35,7 +36,7 @@ data class AddStoryUiState(
 
 class AddStoryViewModel(
     private val storyRepository: StoryRepository,
-    private val geocodingService: GeocodingService
+    private val locationRepository: LocationRepository
 ) : ViewModel() {
 
     private val _uiState = MutableStateFlow(AddStoryUiState())
@@ -79,7 +80,7 @@ class AddStoryViewModel(
         }
 
         viewModelScope.launch {
-            val address = geocodingService.reverseGeocode(lat, lon)
+            val address = locationRepository.reverseGeocode(lat, lon)
             _uiState.update {
                 it.copy(
                     locationName = address,
@@ -99,7 +100,7 @@ class AddStoryViewModel(
         searchJob = viewModelScope.launch {
             delay(500) // Debounce for OSM policy
             _uiState.update { it.copy(isSearchingLocation = true) }
-            val results = geocodingService.searchPlaces(query)
+            val results = locationRepository.searchPlaces(query)
             _uiState.update {
                 it.copy(
                     locationSearchResults = results,
@@ -144,7 +145,7 @@ class AddStoryViewModel(
         return isValid
     }
 
-    fun uploadStory(onSuccess: () -> Unit) {
+    fun uploadStory() {
         if (!validate()) return
 
         val state = _uiState.value
@@ -175,12 +176,11 @@ class AddStoryViewModel(
                     }
                     is ApiResult.Success -> {
                         _uiState.update { it.copy(isLoading = false, isSuccess = true) }
-                        onSuccess()
                     }
                     is ApiResult.Error -> {
                         // Simpan otomatis ke antrean draft offline jika koneksi gagal
                         storyRepository.saveOfflineDraft(
-                            id = "draft_${kotlin.time.TimeSource.Monotonic.markNow().hashCode()}",
+                            id = generateDraftId(),
                             description = desc,
                             photoBytes = bytes,
                             lat = state.lat,
@@ -201,7 +201,7 @@ class AddStoryViewModel(
         }
     }
 
-    fun saveDraftManually(onSuccess: () -> Unit) {
+    fun saveDraftManually() {
         if (!validate()) return
         val state = _uiState.value
         val bytes = state.photoBytes ?: return
@@ -209,7 +209,7 @@ class AddStoryViewModel(
 
         viewModelScope.launch {
             storyRepository.saveOfflineDraft(
-                id = "draft_${kotlin.time.TimeSource.Monotonic.markNow().hashCode()}",
+                id = generateDraftId(),
                 description = desc,
                 photoBytes = bytes,
                 lat = state.lat,
@@ -218,8 +218,11 @@ class AddStoryViewModel(
                 locationName = state.locationName
             )
             _uiState.update { it.copy(savedOffline = true) }
-            onSuccess()
         }
+    }
+
+    fun resetSuccess() {
+        _uiState.update { it.copy(isSuccess = false, savedOffline = false) }
     }
 
     fun clearError() {

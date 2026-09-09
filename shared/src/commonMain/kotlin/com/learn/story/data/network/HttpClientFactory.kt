@@ -32,7 +32,7 @@ fun createHttpClient(engine: HttpClientEngine, tokenStorage: TokenStorage): Http
         }
 
         install(Logging) {
-            level = LogLevel.ALL
+            level = LogLevel.HEADERS
             logger = Logger.DEFAULT
         }
 

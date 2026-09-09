@@ -18,6 +18,9 @@ interface StoryDao {
     @Query("SELECT * FROM stories WHERE id = :id LIMIT 1")
     suspend fun getStoryById(id: String): StoryEntity?
 
+    @Query("SELECT * FROM stories WHERE id IN (SELECT storyId FROM bookmarks) ORDER BY createdAt DESC")
+    fun getBookmarkedStoriesFlow(): Flow<List<StoryEntity>>
+
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insertStories(stories: List<StoryEntity>)
 

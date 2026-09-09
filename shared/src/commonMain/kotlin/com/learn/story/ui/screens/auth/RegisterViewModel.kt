@@ -4,6 +4,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.learn.story.data.network.ApiResult
 import com.learn.story.data.repository.AuthRepository
+import com.learn.story.util.AuthValidator
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -19,7 +20,8 @@ data class RegisterUiState(
     val passwordError: String? = null,
     val isLoading: Boolean = false,
     val errorMessage: String? = null,
-    val successMessage: String? = null
+    val successMessage: String? = null,
+    val isSuccess: Boolean = false
 )
 
 class RegisterViewModel(
@@ -60,41 +62,23 @@ class RegisterViewModel(
     }
 
     private fun validate(): Boolean {
-        var isValid = true
         val state = _uiState.value
-        val email = state.email.trim()
+        val nameErr = AuthValidator.validateName(state.name)
+        val emailErr = AuthValidator.validateEmail(state.email)
+        val passErr = AuthValidator.validatePassword(state.password)
 
-        if (state.name.trim().isEmpty()) {
-            _uiState.update { it.copy(nameError = "Nama tidak boleh kosong") }
-            isValid = false
+        _uiState.update {
+            it.copy(
+                nameError = nameErr,
+                emailError = emailErr,
+                passwordError = passErr
+            )
         }
 
-        if (email.isEmpty()) {
-            _uiState.update { it.copy(emailError = "Email tidak boleh kosong") }
-            isValid = false
-        } else if (!isValidEmail(email)) {
-            _uiState.update { it.copy(emailError = "Format email tidak valid") }
-            isValid = false
-        }
-
-        if (state.password.trim().isEmpty()) {
-            _uiState.update { it.copy(passwordError = "Password tidak boleh kosong") }
-            isValid = false
-        } else if (state.password.length < 8) {
-            _uiState.update { it.copy(passwordError = "Password minimal 8 karakter") }
-            isValid = false
-        }
-
-        return isValid
+        return nameErr == null && emailErr == null && passErr == null
     }
 
-    private fun isValidEmail(email: String): Boolean {
-        val atIndex = email.indexOf('@')
-        val dotIndex = email.lastIndexOf('.')
-        return atIndex > 0 && dotIndex > atIndex + 1 && dotIndex < email.length - 1
-    }
-
-    fun register(onSuccess: () -> Unit) {
+    fun register() {
         if (!validate()) return
 
         val name = _uiState.value.name.trim()
@@ -108,10 +92,10 @@ class RegisterViewModel(
                     _uiState.update {
                         it.copy(
                             isLoading = false,
-                            successMessage = result.data
+                            successMessage = result.data,
+                            isSuccess = true
                         )
                     }
-                    onSuccess()
                 }
                 is ApiResult.Error -> {
                     _uiState.update {
@@ -123,6 +107,10 @@ class RegisterViewModel(
                 }
             }
         }
+    }
+
+    fun resetSuccess() {
+        _uiState.update { it.copy(isSuccess = false) }
     }
 
     fun clearMessages() {

@@ -121,4 +121,26 @@ class SharedCommonTest {
         assertEquals(com.learn.story.ui.theme.AppThemeMode.LIGHT, themeRepo.themeMode.value)
         assertEquals("light", settings.getStringOrNull("app_theme_mode"))
     }
+
+    @Test
+    fun testAuthValidator() {
+        assertEquals("Nama tidak boleh kosong", com.learn.story.util.AuthValidator.validateName(""))
+        assertEquals(null, com.learn.story.util.AuthValidator.validateName("John Doe"))
+
+        assertEquals("Email tidak boleh kosong", com.learn.story.util.AuthValidator.validateEmail(""))
+        assertEquals("Format email tidak valid", com.learn.story.util.AuthValidator.validateEmail("invalid-email"))
+        assertEquals(null, com.learn.story.util.AuthValidator.validateEmail("user@example.com"))
+
+        assertEquals("Password tidak boleh kosong", com.learn.story.util.AuthValidator.validatePassword(""))
+        assertEquals("Password minimal 8 karakter", com.learn.story.util.AuthValidator.validatePassword("12345"))
+        assertEquals(null, com.learn.story.util.AuthValidator.validatePassword("password123"))
+    }
+
+    @Test
+    fun testTimeUtil() {
+        val now = com.learn.story.util.currentTimeMillis()
+        kotlin.test.assertTrue(now > 0)
+        val draftId = com.learn.story.util.generateDraftId()
+        kotlin.test.assertTrue(draftId.startsWith("draft_"))
+    }
 }

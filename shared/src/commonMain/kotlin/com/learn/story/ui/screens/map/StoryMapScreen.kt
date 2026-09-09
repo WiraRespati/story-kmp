@@ -10,6 +10,7 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -17,13 +18,19 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.ScaffoldDefaults
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
@@ -44,6 +51,8 @@ import com.learn.story.ui.components.ErrorStateView
 import com.learn.story.ui.components.map.LeafletMapView
 import com.learn.story.ui.components.map.MapInteractionMode
 
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
+
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun StoryMapScreen(
@@ -52,7 +61,7 @@ fun StoryMapScreen(
     onNavigateToDetail: (String) -> Unit,
     modifier: Modifier = Modifier
 ) {
-    val uiState by viewModel.uiState.collectAsState()
+    val uiState by viewModel.uiState.collectAsStateWithLifecycle()
 
     Scaffold(
         topBar = {
@@ -70,13 +79,19 @@ fun StoryMapScreen(
                 navigationIcon = {
                     if (onNavigateBack != null) {
                         IconButton(onClick = onNavigateBack) {
-                            Text("⬅️", fontSize = 18.sp)
+                            Icon(
+                                imageVector = Icons.AutoMirrored.Filled.ArrowBack,
+                                contentDescription = "Kembali"
+                            )
                         }
                     }
                 },
                 actions = {
                     IconButton(onClick = viewModel::loadLocationStories) {
-                        Text("🔄")
+                        Icon(
+                            imageVector = Icons.Default.Refresh,
+                            contentDescription = "Segarkan Data"
+                        )
                     }
                 },
                 colors = TopAppBarDefaults.topAppBarColors(
@@ -84,12 +99,16 @@ fun StoryMapScreen(
                 )
             )
         },
+        contentWindowInsets = if (onNavigateBack == null) WindowInsets(0, 0, 0, 0) else ScaffoldDefaults.contentWindowInsets,
         modifier = modifier.fillMaxSize()
     ) { innerPadding ->
         Box(
             modifier = Modifier
                 .fillMaxSize()
-                .padding(innerPadding)
+                .padding(
+                    top = innerPadding.calculateTopPadding(),
+                    bottom = if (onNavigateBack == null) 0.dp else innerPadding.calculateBottomPadding()
+                )
         ) {
             when {
                 uiState.isLoading && uiState.markers.isEmpty() -> {
@@ -183,7 +202,10 @@ fun StoryMapScreen(
                                         }
 
                                         IconButton(onClick = viewModel::dismissSelectedStory) {
-                                            Text("✕", fontSize = 16.sp)
+                                            Icon(
+                                                imageVector = Icons.Default.Close,
+                                                contentDescription = "Tutup"
+                                            )
                                         }
                                     }
 

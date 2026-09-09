@@ -4,7 +4,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.learn.story.data.model.Story
 import com.learn.story.data.network.ApiResult
-import com.learn.story.data.remote.GeocodingService
+import com.learn.story.data.repository.LocationRepository
 import com.learn.story.data.repository.StoryRepository
 import com.learn.story.ui.components.map.MapMarker
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -24,7 +24,7 @@ data class StoryMapUiState(
 
 class StoryMapViewModel(
     private val storyRepository: StoryRepository,
-    private val geocodingService: GeocodingService
+    private val locationRepository: LocationRepository
 ) : ViewModel() {
 
     private val _uiState = MutableStateFlow(StoryMapUiState())
@@ -43,13 +43,15 @@ class StoryMapViewModel(
                     }
                     is ApiResult.Success -> {
                         val validStories = result.data.filter { it.lat != null && it.lon != null }
-                        val markers = validStories.map { story ->
+                        val markers = validStories.mapNotNull { story ->
+                            val lat = story.lat ?: return@mapNotNull null
+                            val lon = story.lon ?: return@mapNotNull null
                             MapMarker(
                                 id = story.id,
                                 title = story.name,
                                 snippet = story.description.take(80) + if (story.description.length > 80) "..." else "",
-                                lat = story.lat!!,
-                                lon = story.lon!!,
+                                lat = lat,
+                                lon = lon,
                                 photoUrl = story.photoUrl
                             )
                         }
@@ -81,7 +83,7 @@ class StoryMapViewModel(
 
         if (story?.lat != null && story.lon != null) {
             viewModelScope.launch {
-                val address = geocodingService.reverseGeocode(story.lat, story.lon)
+                val address = locationRepository.reverseGeocode(story.lat, story.lon)
                 _uiState.update { it.copy(selectedStoryAddress = address) }
             }
         }

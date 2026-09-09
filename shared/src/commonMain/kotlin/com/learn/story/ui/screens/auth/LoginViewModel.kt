@@ -4,6 +4,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.learn.story.data.network.ApiResult
 import com.learn.story.data.repository.AuthRepository
+import com.learn.story.util.AuthValidator
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -48,36 +49,21 @@ class LoginViewModel(
     }
 
     private fun validate(): Boolean {
-        var isValid = true
         val state = _uiState.value
-        val email = state.email.trim()
+        val emailErr = AuthValidator.validateEmail(state.email)
+        val passErr = AuthValidator.validatePassword(state.password)
 
-        if (email.isEmpty()) {
-            _uiState.update { it.copy(emailError = "Email tidak boleh kosong") }
-            isValid = false
-        } else if (!isValidEmail(email)) {
-            _uiState.update { it.copy(emailError = "Format email tidak valid") }
-            isValid = false
+        _uiState.update {
+            it.copy(
+                emailError = emailErr,
+                passwordError = passErr
+            )
         }
 
-        if (state.password.trim().isEmpty()) {
-            _uiState.update { it.copy(passwordError = "Password tidak boleh kosong") }
-            isValid = false
-        } else if (state.password.length < 8) {
-            _uiState.update { it.copy(passwordError = "Password minimal 8 karakter") }
-            isValid = false
-        }
-
-        return isValid
+        return emailErr == null && passErr == null
     }
 
-    private fun isValidEmail(email: String): Boolean {
-        val atIndex = email.indexOf('@')
-        val dotIndex = email.lastIndexOf('.')
-        return atIndex > 0 && dotIndex > atIndex + 1 && dotIndex < email.length - 1
-    }
-
-    fun login(onSuccess: () -> Unit) {
+    fun login() {
         if (!validate()) return
 
         val email = _uiState.value.email.trim()
@@ -88,7 +74,6 @@ class LoginViewModel(
             when (val result = authRepository.login(email, password)) {
                 is ApiResult.Success -> {
                     _uiState.update { it.copy(isLoading = false, isSuccess = true) }
-                    onSuccess()
                 }
                 is ApiResult.Error -> {
                     _uiState.update {
@@ -100,6 +85,10 @@ class LoginViewModel(
                 }
             }
         }
+    }
+
+    fun resetSuccess() {
+        _uiState.update { it.copy(isSuccess = false) }
     }
 
     fun clearError() {

@@ -1,39 +1,40 @@
 package com.learn.story.ui.screens.home
 
-import androidx.compose.foundation.background
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.core.LinearEasing
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.expandVertically
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.shrinkVertically
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
-import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ExitToApp
-import androidx.compose.material.icons.filled.Bookmark
-import androidx.compose.material.icons.filled.CloudUpload
+import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.LocationOn
 import androidx.compose.material.icons.filled.Map
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material3.AlertDialog
-import androidx.compose.material3.Card
-import androidx.compose.material3.CardDefaults
-import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilterChip
-import androidx.compose.material3.FilterChipDefaults
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.OutlinedTextFieldDefaults
@@ -53,16 +54,18 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.rotate
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
 import com.learn.story.data.model.Story
 import com.learn.story.ui.components.EmptyStateView
 import com.learn.story.ui.components.ErrorStateView
 import com.learn.story.ui.components.StoryCard
+import com.learn.story.ui.components.StoryListSkeleton
 import com.learn.story.ui.theme.StoryTheme
+
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -74,9 +77,16 @@ fun StoryListScreen(
     onLoggedOut: (() -> Unit)? = null,
     modifier: Modifier = Modifier
 ) {
-    val uiState by viewModel.uiState.collectAsState()
+    val uiState by viewModel.uiState.collectAsStateWithLifecycle()
     var showLogoutDialog by remember { mutableStateOf(false) }
     val snackbarHostState = remember { SnackbarHostState() }
+
+    LaunchedEffect(uiState.isLoggedOut) {
+        if (uiState.isLoggedOut && onLoggedOut != null) {
+            viewModel.resetLoggedOut()
+            onLoggedOut()
+        }
+    }
 
     LaunchedEffect(uiState.syncMessage) {
         uiState.syncMessage?.let { msg ->
@@ -94,7 +104,7 @@ fun StoryListScreen(
                 TextButton(
                     onClick = {
                         showLogoutDialog = false
-                        viewModel.logout(onLoggedOut)
+                        viewModel.logout()
                     }
                 ) {
                     Text("Keluar", color = MaterialTheme.colorScheme.error)
@@ -142,27 +152,58 @@ fun StoryListScreenContent(
     snackbarHostState: SnackbarHostState = remember { SnackbarHostState() },
     modifier: Modifier = Modifier
 ) {
+    var isSearchExpanded by remember { mutableStateOf(false) }
+
+    val refreshRotation by animateFloatAsState(
+        targetValue = if (uiState.isLoading) 360f else 0f,
+        animationSpec = tween(durationMillis = 800, easing = LinearEasing),
+        label = "RefreshRotation"
+    )
 
     Scaffold(
         topBar = {
             TopAppBar(
                 title = {
-                    Column {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
                         Text(
-                            text = "Dicoding Story",
+                            text = "Story Feed",
                             style = MaterialTheme.typography.titleLarge,
-                            fontWeight = FontWeight.Bold
+                            fontWeight = FontWeight.ExtraBold,
+                            color = MaterialTheme.colorScheme.primary
                         )
                         uiState.userName?.let { name ->
                             Text(
-                                text = "Halo, $name 👋",
-                                style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                                text = " • $name",
+                                style = MaterialTheme.typography.bodyMedium,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                fontWeight = FontWeight.Medium
                             )
                         }
                     }
                 },
                 actions = {
+                    // Search toggle button
+                    IconButton(onClick = {
+                        isSearchExpanded = !isSearchExpanded
+                        if (!isSearchExpanded && uiState.searchQuery.isNotEmpty()) {
+                            onSearchQueryChanged("")
+                        }
+                    }) {
+                        Icon(
+                            imageVector = if (isSearchExpanded || uiState.searchQuery.isNotEmpty()) Icons.Default.Close else Icons.Default.Search,
+                            contentDescription = if (isSearchExpanded) "Tutup Pencarian" else "Cari Cerita"
+                        )
+                    }
+
+                    // Refresh button with animated rotation
+                    IconButton(onClick = onRefresh) {
+                        Icon(
+                            imageVector = Icons.Default.Refresh,
+                            contentDescription = "Segarkan Data",
+                            modifier = Modifier.rotate(refreshRotation)
+                        )
+                    }
+
                     if (onNavigateToMap != null) {
                         IconButton(onClick = onNavigateToMap) {
                             Icon(
@@ -171,12 +212,7 @@ fun StoryListScreenContent(
                             )
                         }
                     }
-                    IconButton(onClick = onRefresh) {
-                        Icon(
-                            imageVector = Icons.Default.Refresh,
-                            contentDescription = "Segarkan Data"
-                        )
-                    }
+
                     if (onLogoutClick != null) {
                         IconButton(onClick = onLogoutClick) {
                             Icon(
@@ -193,159 +229,99 @@ fun StoryListScreenContent(
             )
         },
         snackbarHost = { SnackbarHost(snackbarHostState) },
+        contentWindowInsets = WindowInsets(0, 0, 0, 0),
         modifier = modifier.fillMaxSize()
     ) { innerPadding ->
         Column(
             modifier = Modifier
                 .fillMaxSize()
-                .padding(innerPadding)
+                .padding(top = innerPadding.calculateTopPadding())
         ) {
-            // Search Input
-            OutlinedTextField(
-                value = uiState.searchQuery,
-                onValueChange = onSearchQueryChanged,
-                placeholder = { Text("Cari cerita atau nama penulis...") },
-                leadingIcon = {
-                    Icon(
-                        imageVector = Icons.Default.Search,
-                        contentDescription = "Cari",
-                        tint = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
-                },
-                singleLine = true,
-                shape = RoundedCornerShape(12.dp),
-                colors = OutlinedTextFieldDefaults.colors(
-                    focusedBorderColor = MaterialTheme.colorScheme.primary,
-                    unfocusedBorderColor = MaterialTheme.colorScheme.outlineVariant
-                ),
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 16.dp, vertical = 8.dp)
-            )
-
-            // Filter Chips
-            LazyRow(
-                contentPadding = PaddingValues(horizontal = 16.dp),
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
-                modifier = Modifier.padding(bottom = 8.dp)
+            // Expandable Sleek Search & Filter Bar (Zero clutter when hidden)
+            AnimatedVisibility(
+                visible = isSearchExpanded || uiState.searchQuery.isNotEmpty(),
+                enter = expandVertically() + fadeIn(),
+                exit = shrinkVertically() + fadeOut()
             ) {
-                item {
-                    FilterChip(
-                        selected = !uiState.showOnlyWithLocation && !uiState.showOnlyBookmarks,
-                        onClick = {
-                            if (uiState.showOnlyWithLocation) onToggleLocationFilter()
-                            if (uiState.showOnlyBookmarks) onToggleBookmarksFilter()
-                        },
-                        label = { Text("Semua (${uiState.stories.size})") }
-                    )
-                }
-                item {
-                    FilterChip(
-                        selected = uiState.showOnlyWithLocation,
-                        onClick = onToggleLocationFilter,
-                        label = { Text("Berlokasi") },
-                        leadingIcon = {
-                            Icon(
-                                imageVector = Icons.Default.LocationOn,
-                                contentDescription = null,
-                                modifier = Modifier.size(16.dp)
-                            )
-                        },
-                        colors = FilterChipDefaults.filterChipColors(
-                            selectedContainerColor = MaterialTheme.colorScheme.secondaryContainer
-                        )
-                    )
-                }
-                item {
-                    FilterChip(
-                        selected = uiState.showOnlyBookmarks,
-                        onClick = onToggleBookmarksFilter,
-                        label = { Text("Favorit (${uiState.bookmarkedIds.size})") },
-                        leadingIcon = {
-                            Icon(
-                                imageVector = Icons.Default.Bookmark,
-                                contentDescription = null,
-                                modifier = Modifier.size(16.dp)
-                            )
-                        },
-                        colors = FilterChipDefaults.filterChipColors(
-                            selectedContainerColor = MaterialTheme.colorScheme.tertiaryContainer
-                        )
-                    )
-                }
-            }
-
-            // Offline Outbox Banner (if there are unsynced drafts)
-            if (uiState.offlineDraftsCount > 0) {
-                Card(
-                    shape = RoundedCornerShape(12.dp),
-                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.primaryContainer),
+                Column(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .padding(horizontal = 16.dp, vertical = 4.dp)
+                        .padding(horizontal = 16.dp, vertical = 6.dp)
                 ) {
+                    OutlinedTextField(
+                        value = uiState.searchQuery,
+                        onValueChange = onSearchQueryChanged,
+                        placeholder = { Text("Cari cerita atau nama penulis...") },
+                        leadingIcon = {
+                            Icon(
+                                imageVector = Icons.Default.Search,
+                                contentDescription = "Cari",
+                                tint = MaterialTheme.colorScheme.primary
+                            )
+                        },
+                        trailingIcon = {
+                            if (uiState.searchQuery.isNotEmpty()) {
+                                IconButton(onClick = { onSearchQueryChanged("") }) {
+                                    Icon(
+                                        imageVector = Icons.Default.Close,
+                                        contentDescription = "Hapus pencarian"
+                                    )
+                                }
+                            }
+                        },
+                        singleLine = true,
+                        shape = RoundedCornerShape(14.dp),
+                        colors = OutlinedTextFieldDefaults.colors(
+                            focusedBorderColor = MaterialTheme.colorScheme.primary,
+                            unfocusedBorderColor = MaterialTheme.colorScheme.outlineVariant
+                        ),
+                        modifier = Modifier.fillMaxWidth()
+                    )
+
                     Row(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .padding(12.dp),
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.SpaceBetween
+                            .padding(top = 6.dp),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        verticalAlignment = Alignment.CenterVertically
                     ) {
-                        Box(
-                            modifier = Modifier
-                                .size(38.dp)
-                                .clip(CircleShape)
-                                .background(MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.12f)),
-                            contentAlignment = Alignment.Center
-                        ) {
-                            Icon(
-                                imageVector = Icons.Default.CloudUpload,
-                                contentDescription = null,
-                                tint = MaterialTheme.colorScheme.onPrimaryContainer,
-                                modifier = Modifier.size(20.dp)
-                            )
-                        }
-
-                        Spacer(modifier = Modifier.width(12.dp))
-
-                        Column(modifier = Modifier.weight(1f)) {
-                            Text(
-                                text = "${uiState.offlineDraftsCount} Story Offline",
-                                fontWeight = FontWeight.Bold,
-                                style = MaterialTheme.typography.titleSmall,
-                                color = MaterialTheme.colorScheme.onPrimaryContainer
-                            )
-                            Text(
-                                text = "Tersimpan di perangkat saat offline",
-                                style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.8f)
-                            )
-                        }
-
-                        if (uiState.isSyncingDrafts) {
-                            CircularProgressIndicator(
-                                modifier = Modifier.size(24.dp),
-                                color = MaterialTheme.colorScheme.primary
-                            )
-                        } else {
-                            TextButton(onClick = onSyncDrafts) {
-                                Text("Upload Sekarang", fontWeight = FontWeight.Bold)
+                        FilterChip(
+                            selected = uiState.showOnlyWithLocation,
+                            onClick = onToggleLocationFilter,
+                            label = { Text("Hanya dengan Lokasi", style = MaterialTheme.typography.bodySmall) },
+                            leadingIcon = {
+                                Icon(
+                                    imageVector = Icons.Default.LocationOn,
+                                    contentDescription = null,
+                                    modifier = Modifier.size(14.dp)
+                                )
                             }
-                        }
+                        )
                     }
                 }
             }
 
-            // Story List Content
+            // Sleek indeterminate linear indicator when refreshing in background
+            AnimatedVisibility(
+                visible = uiState.isLoading && uiState.stories.isNotEmpty(),
+                enter = fadeIn() + expandVertically(),
+                exit = fadeOut() + shrinkVertically()
+            ) {
+                LinearProgressIndicator(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(3.dp),
+                    color = MaterialTheme.colorScheme.primary,
+                    trackColor = MaterialTheme.colorScheme.surfaceVariant
+                )
+            }
+
+            // Story List Content (100% focused on feed)
             Box(modifier = Modifier.fillMaxSize()) {
                 when {
                     uiState.isLoading && uiState.stories.isEmpty() -> {
-                        Box(
-                            modifier = Modifier.fillMaxSize(),
-                            contentAlignment = Alignment.Center
-                        ) {
-                            CircularProgressIndicator(color = MaterialTheme.colorScheme.primary)
-                        }
+                        // Shimmer Skeleton Loading Effect
+                        StoryListSkeleton(count = 3)
                     }
 
                     uiState.errorMessage != null && uiState.stories.isEmpty() -> {
@@ -376,7 +352,7 @@ fun StoryListScreenContent(
                     else -> {
                         LazyColumn(
                             modifier = Modifier.fillMaxSize(),
-                            contentPadding = PaddingValues(16.dp),
+                            contentPadding = PaddingValues(horizontal = 16.dp, vertical = 12.dp),
                             verticalArrangement = Arrangement.spacedBy(16.dp)
                         ) {
                             items(uiState.filteredStories, key = { it.id }) { story ->
@@ -384,7 +360,8 @@ fun StoryListScreenContent(
                                     story = story,
                                     onClick = { onNavigateToDetail(story.id) },
                                     isBookmarked = uiState.bookmarkedIds.contains(story.id),
-                                    onBookmarkClick = { onToggleBookmark(story.id) }
+                                    onBookmarkClick = { onToggleBookmark(story.id) },
+                                    modifier = Modifier.animateItem()
                                 )
                             }
                         }

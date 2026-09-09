@@ -8,6 +8,7 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -39,6 +40,7 @@ import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.remember
@@ -56,22 +58,28 @@ import com.learn.story.data.model.OfflineStoryDraft
 import com.learn.story.data.model.Story
 import com.learn.story.ui.components.EmptyStateView
 import com.learn.story.ui.components.StoryCard
-import com.learn.story.ui.screens.home.HomeUiState
+import androidx.compose.material3.SnackbarHost
+import androidx.compose.material3.SnackbarHostState
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.learn.story.ui.screens.saved.SavedStoriesViewModel
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun SavedStoriesScreen(
-    uiState: HomeUiState,
+    viewModel: SavedStoriesViewModel,
     onNavigateToDetail: (String) -> Unit,
-    onToggleBookmark: (String) -> Unit,
-    onSyncDrafts: () -> Unit,
-    onDeleteDraft: (String) -> Unit,
-    onRefresh: () -> Unit,
     modifier: Modifier = Modifier
 ) {
+    val uiState by viewModel.uiState.collectAsStateWithLifecycle()
     var selectedTabIndex by remember { mutableIntStateOf(0) }
-    val bookmarkedStories = remember(uiState.stories, uiState.bookmarkedIds) {
-        uiState.stories.filter { uiState.bookmarkedIds.contains(it.id) }
+    val bookmarkedStories = uiState.bookmarkedStories
+    val snackbarHostState = remember { SnackbarHostState() }
+
+    LaunchedEffect(uiState.syncMessage) {
+        uiState.syncMessage?.let { msg ->
+            snackbarHostState.showSnackbar(msg)
+            viewModel.clearSyncMessage()
+        }
     }
 
     Scaffold(
@@ -87,25 +95,19 @@ fun SavedStoriesScreen(
                         )
                     }
                 },
-                actions = {
-                    IconButton(onClick = onRefresh) {
-                        Icon(
-                            imageVector = Icons.Default.Refresh,
-                            contentDescription = "Segarkan Data"
-                        )
-                    }
-                },
                 colors = TopAppBarDefaults.topAppBarColors(
                     containerColor = MaterialTheme.colorScheme.surface
                 )
             )
         },
+        snackbarHost = { SnackbarHost(snackbarHostState) },
+        contentWindowInsets = WindowInsets(0, 0, 0, 0),
         modifier = modifier.fillMaxSize()
     ) { innerPadding ->
         Column(
             modifier = Modifier
                 .fillMaxSize()
-                .padding(innerPadding)
+                .padding(top = innerPadding.calculateTopPadding())
         ) {
             // Segmented Tabs: Favorit & Kotak Keluar
             PrimaryTabRow(
@@ -162,7 +164,7 @@ fun SavedStoriesScreen(
                     if (bookmarkedStories.isEmpty()) {
                         EmptyStateView(
                             message = "Belum ada cerita favorit yang tersimpan.\nTekan ikon simpan pada postingan untuk menyimpannya di sini.",
-                            onRefresh = onRefresh,
+                            onRefresh = {},
                             modifier = Modifier.align(Alignment.Center)
                         )
                     } else {
@@ -176,7 +178,7 @@ fun SavedStoriesScreen(
                                     story = story,
                                     onClick = { onNavigateToDetail(story.id) },
                                     isBookmarked = true,
-                                    onBookmarkClick = { onToggleBookmark(story.id) }
+                                    onBookmarkClick = { viewModel.toggleBookmark(story.id) }
                                 )
                             }
                         }
@@ -231,13 +233,13 @@ fun SavedStoriesScreen(
                                         )
                                     }
 
-                                    if (uiState.isSyncingDrafts) {
+                                    if (uiState.isSyncing) {
                                         CircularProgressIndicator(
                                             modifier = Modifier.size(28.dp),
                                             color = MaterialTheme.colorScheme.primary
                                         )
                                     } else {
-                                        TextButton(onClick = onSyncDrafts) {
+                                        TextButton(onClick = viewModel::syncOfflineDrafts) {
                                             Text("Upload Semua", fontWeight = FontWeight.Bold)
                                         }
                                     }
@@ -248,7 +250,7 @@ fun SavedStoriesScreen(
                         if (uiState.offlineDrafts.isEmpty()) {
                             EmptyStateView(
                                 message = "Kotak keluar kosong!\nSemua draft yang dibuat offline sudah berhasil diunggah.",
-                                onRefresh = onRefresh,
+                                onRefresh = {},
                                 modifier = Modifier.align(Alignment.CenterHorizontally).padding(top = 48.dp)
                             )
                         } else {
@@ -260,7 +262,7 @@ fun SavedStoriesScreen(
                                 items(uiState.offlineDrafts, key = { it.id }) { draft ->
                                     DraftCard(
                                         draft = draft,
-                                        onDelete = { onDeleteDraft(draft.id) }
+                                        onDelete = { viewModel.deleteOfflineDraft(draft.id) }
                                     )
                                 }
                             }

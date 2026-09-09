@@ -10,6 +10,7 @@ import com.learn.story.data.model.OfflineStoryDraft
 import com.learn.story.data.model.Story
 import com.learn.story.data.network.ApiResult
 import com.learn.story.data.remote.StoryApiService
+import com.learn.story.util.currentTimeMillis
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.SharedFlow
@@ -30,6 +31,9 @@ class StoryRepository(
 
     // Reactive streams from Room SQLite Database
     val bookmarkedIdsFlow: Flow<Set<String>> = bookmarkDao.getBookmarkedStoryIdsFlow().map { it.toSet() }
+    val bookmarkedStoriesFlow: Flow<List<Story>> = storyDao.getBookmarkedStoriesFlow().map { list ->
+        list.map { it.toDomain() }
+    }
     val offlineDraftsFlow: Flow<List<OfflineStoryDraft>> = offlineDraftDao.getDraftsFlow().map { list ->
         list.map { it.toDomain() }
     }
@@ -158,7 +162,7 @@ class StoryRepository(
             bookmarkDao.addBookmark(
                 BookmarkEntity(
                     storyId = storyId,
-                    bookmarkedAtEpoch = kotlin.time.TimeSource.Monotonic.markNow().hashCode().toLong()
+                    bookmarkedAtEpoch = currentTimeMillis()
                 )
             )
             true
@@ -187,7 +191,7 @@ class StoryRepository(
             lat = lat,
             lon = lon,
             isGuest = isGuest,
-            createdAtEpoch = kotlin.time.TimeSource.Monotonic.markNow().hashCode().toLong(),
+            createdAtEpoch = currentTimeMillis(),
             locationName = locationName
         )
         offlineDraftDao.insertDraft(draft.toEntity())
@@ -196,6 +200,21 @@ class StoryRepository(
     suspend fun getOfflineDrafts(): List<OfflineStoryDraft> = offlineDraftDao.getDrafts().map { it.toDomain() }
 
     suspend fun removeOfflineDraft(draftId: String) = offlineDraftDao.deleteDraftById(draftId)
+
+    suspend fun syncOfflineDrafts(): Int {
+        val drafts = getOfflineDrafts()
+        if (drafts.isEmpty()) return 0
+        var successCount = 0
+        for (draft in drafts) {
+            uploadDraft(draft).collect { result ->
+                if (result is ApiResult.Success) {
+                    removeOfflineDraft(draft.id)
+                    successCount++
+                }
+            }
+        }
+        return successCount
+    }
 
     @OptIn(ExperimentalEncodingApi::class)
     fun uploadDraft(draft: OfflineStoryDraft): Flow<ApiResult<String>> {

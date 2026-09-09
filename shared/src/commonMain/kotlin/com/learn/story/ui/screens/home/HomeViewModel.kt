@@ -12,6 +12,8 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 
+import com.learn.story.util.AppConstants
+
 data class HomeUiState(
     val stories: List<Story> = emptyList(),
     val filteredStories: List<Story> = emptyList(),
@@ -25,7 +27,8 @@ data class HomeUiState(
     val syncMessage: String? = null,
     val isLoading: Boolean = false,
     val errorMessage: String? = null,
-    val userName: String? = null
+    val userName: String? = null,
+    val isLoggedOut: Boolean = false
 )
 
 class HomeViewModel(
@@ -41,6 +44,25 @@ class HomeViewModel(
             it.copy(
                 userName = authRepository.getUserName()
             )
+        }
+        // Offline-first: tampilkan cache SQLite lokal secara instan
+        viewModelScope.launch {
+            storyRepository.cachedStoriesFlow.collect { cached ->
+                if (cached.isNotEmpty() && _uiState.value.stories.isEmpty()) {
+                    _uiState.update { current ->
+                        current.copy(
+                            stories = cached,
+                            filteredStories = applyFilters(
+                                list = cached,
+                                query = current.searchQuery,
+                                onlyLocation = current.showOnlyWithLocation,
+                                onlyBookmarks = current.showOnlyBookmarks,
+                                bookmarks = current.bookmarkedIds
+                            )
+                        )
+                    }
+                }
+            }
         }
         viewModelScope.launch {
             storyRepository.bookmarkedIdsFlow.collect { bookmarks ->
@@ -80,7 +102,7 @@ class HomeViewModel(
 
     fun loadStories() {
         viewModelScope.launch {
-            storyRepository.getStories(page = 1, size = 30, location = 0).collect { result ->
+            storyRepository.getStories(page = 1, size = AppConstants.DEFAULT_PAGE_SIZE, location = 0).collect { result ->
                 when (result) {
                     is ApiResult.Loading -> {
                         _uiState.update { it.copy(isLoading = true, errorMessage = null) }
@@ -103,10 +125,10 @@ class HomeViewModel(
                         }
                     }
                     is ApiResult.Error -> {
-                        _uiState.update {
-                            it.copy(
+                        _uiState.update { current ->
+                            current.copy(
                                 isLoading = false,
-                                errorMessage = result.message
+                                errorMessage = if (current.stories.isEmpty()) result.message else null
                             )
                         }
                     }
@@ -187,15 +209,7 @@ class HomeViewModel(
             if (drafts.isEmpty()) return@launch
 
             _uiState.update { it.copy(isSyncingDrafts = true) }
-            var successCount = 0
-            for (draft in drafts) {
-                storyRepository.uploadDraft(draft).collect { result ->
-                    if (result is ApiResult.Success) {
-                        storyRepository.removeOfflineDraft(draft.id)
-                        successCount++
-                    }
-                }
-            }
+            val successCount = storyRepository.syncOfflineDrafts()
             val remainingDrafts = storyRepository.getOfflineDrafts()
             _uiState.update {
                 it.copy(
@@ -234,11 +248,15 @@ class HomeViewModel(
         }
     }
 
-    fun logout(onLoggedOut: () -> Unit) {
+    fun logout() {
         viewModelScope.launch {
             authRepository.logout()
-            onLoggedOut()
+            _uiState.update { it.copy(isLoggedOut = true) }
         }
+    }
+
+    fun resetLoggedOut() {
+        _uiState.update { it.copy(isLoggedOut = false) }
     }
 }
 

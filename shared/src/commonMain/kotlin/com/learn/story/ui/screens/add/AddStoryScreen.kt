@@ -72,6 +72,8 @@ import com.learn.story.ui.picker.rememberCameraLauncher
 import com.learn.story.ui.picker.rememberImagePickerLauncher
 import com.learn.story.ui.theme.StoryTheme
 
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
+
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun AddStoryScreen(
@@ -81,7 +83,7 @@ fun AddStoryScreen(
     onUploadSuccess: () -> Unit,
     modifier: Modifier = Modifier
 ) {
-    val uiState by viewModel.uiState.collectAsState()
+    val uiState by viewModel.uiState.collectAsStateWithLifecycle()
     val snackbarHostState = remember { SnackbarHostState() }
 
     val pickGalleryLauncher = rememberImagePickerLauncher { bytes ->
@@ -90,6 +92,20 @@ fun AddStoryScreen(
 
     val captureCameraLauncher = rememberCameraLauncher { bytes ->
         viewModel.onPhotoSelected(bytes)
+    }
+
+    LaunchedEffect(uiState.isSuccess) {
+        if (uiState.isSuccess) {
+            viewModel.resetSuccess()
+            onUploadSuccess()
+        }
+    }
+
+    LaunchedEffect(uiState.savedOffline) {
+        if (uiState.savedOffline && !uiState.isLoading) {
+            viewModel.resetSuccess()
+            onUploadSuccess()
+        }
     }
 
     LaunchedEffect(uiState.errorMessage) {
@@ -106,8 +122,8 @@ fun AddStoryScreen(
         onRemovePhoto = { viewModel.onPhotoSelected(null) },
         onDescriptionChanged = viewModel::onDescriptionChanged,
         onGuestToggled = viewModel::onGuestToggled,
-        onUpload = { viewModel.uploadStory(onSuccess = onUploadSuccess) },
-        onSaveDraftManually = { viewModel.saveDraftManually(onSuccess = onUploadSuccess) },
+        onUpload = viewModel::uploadStory,
+        onSaveDraftManually = viewModel::saveDraftManually,
         onNavigateToSelectLocation = onNavigateToSelectLocation,
         onClearLocation = viewModel::clearLocation,
         onNavigateBack = onNavigateBack,

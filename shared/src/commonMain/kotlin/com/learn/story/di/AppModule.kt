@@ -19,6 +19,9 @@ import com.learn.story.ui.screens.detail.DetailViewModel
 import com.learn.story.ui.screens.home.HomeViewModel
 import com.learn.story.ui.screens.map.StoryMapViewModel
 import com.learn.story.data.repository.ThemeRepository
+import com.learn.story.data.repository.LocationRepository
+import com.learn.story.ui.screens.profile.ProfileViewModel
+import com.learn.story.ui.screens.saved.SavedStoriesViewModel
 import org.koin.core.module.dsl.viewModelOf
 import org.koin.dsl.module
 
@@ -39,6 +42,7 @@ val appModule = module {
     single { GeocodingService(get(org.koin.core.qualifier.named("geocodingClient"))) }
 
     // Repositories (MVVM + Repository)
+    single { LocationRepository(get()) }
     single { AuthRepository(get(), get()) }
     single { StoryRepository(get(), get(), get(), get()) }
 
@@ -46,7 +50,9 @@ val appModule = module {
     viewModelOf(::LoginViewModel)
     viewModelOf(::RegisterViewModel)
     viewModelOf(::HomeViewModel)
+    viewModelOf(::SavedStoriesViewModel)
     viewModelOf(::DetailViewModel)
     viewModelOf(::AddStoryViewModel)
     viewModelOf(::StoryMapViewModel)
+    viewModelOf(::ProfileViewModel)
 }

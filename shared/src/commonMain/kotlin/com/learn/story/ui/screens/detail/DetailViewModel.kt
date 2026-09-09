@@ -4,7 +4,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.learn.story.data.model.Story
 import com.learn.story.data.network.ApiResult
-import com.learn.story.data.remote.GeocodingService
+import com.learn.story.data.repository.LocationRepository
 import com.learn.story.data.repository.StoryRepository
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -22,7 +22,7 @@ data class DetailUiState(
 
 class DetailViewModel(
     private val storyRepository: StoryRepository,
-    private val geocodingService: GeocodingService
+    private val locationRepository: LocationRepository
 ) : ViewModel() {
 
     private val _uiState = MutableStateFlow(DetailUiState())
@@ -48,7 +48,7 @@ class DetailViewModel(
                         }
 
                         if (story.lat != null && story.lon != null) {
-                            val addr = geocodingService.reverseGeocode(story.lat, story.lon)
+                            val addr = locationRepository.reverseGeocode(story.lat, story.lon)
                             _uiState.update { it.copy(addressName = addr) }
                         }
                     }
